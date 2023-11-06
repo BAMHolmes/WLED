@@ -126,7 +126,7 @@ public:
     {
         checksum = calculateChecksum();
     }
-    Effect(const Segment& segment)
+    Effect(const Segment &segment)
         : mode(segment.mode),
           colors{segment.colors[0], segment.colors[1], segment.colors[2]}, // Assuming default colors for color2 and color3
           speed(segment.speed),
@@ -197,9 +197,9 @@ public:
             off.checksum};
     }
 
-    bool isPreset(const Effect* effect) const
+    bool isPreset(const Effect *effect) const
     {
-        for (const auto& presetChecksum : presetChecksums)
+        for (const auto &presetChecksum : presetChecksums)
         {
             if (effect->checksum == presetChecksum)
             {
@@ -207,7 +207,7 @@ public:
             }
         }
         return false;
-    }    
+    }
 };
 
 class EffectCache
@@ -230,7 +230,8 @@ public:
     {
         refresh();
     }
-    Effect getBySegment(int segId){
+    Effect getBySegment(int segId)
+    {
         switch (segId)
         {
         case LEFT_SEGMENT:
@@ -250,7 +251,8 @@ public:
             break;
         }
     }
-    Effect setBySegment(int segId, Effect effect){
+    Effect setBySegment(int segId, Effect effect)
+    {
         switch (segId)
         {
         case LEFT_SEGMENT:
@@ -271,30 +273,35 @@ public:
         }
     }
 
-    void setBySegmentAndChecksum(int segId, uint32_t checksum, const Effect& effect) {
+    void setBySegmentAndChecksum(int segId, uint32_t checksum, const Effect &effect)
+    {
         segmentEffectMap[segId][checksum] = effect;
     }
-    //Overload setBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
-    void setBySegmentAndChecksum(int segId, const Effect& incomingEffect, const Effect& outgoingEffect) {
+    // Overload setBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
+    void setBySegmentAndChecksum(int segId, const Effect &incomingEffect, const Effect &outgoingEffect)
+    {
         setBySegmentAndChecksum(segId, incomingEffect.checksum, outgoingEffect);
     }
 
-    const Effect* getBySegmentAndChecksum(int segId, uint32_t checksum) const {
+    const Effect *getBySegmentAndChecksum(int segId, uint32_t checksum) const
+    {
         const auto segmentIt = segmentEffectMap.find(segId);
-        if (segmentIt != segmentEffectMap.end()) {
-            const auto& effectMap = segmentIt->second;
+        if (segmentIt != segmentEffectMap.end())
+        {
+            const auto &effectMap = segmentIt->second;
             const auto effectIt = effectMap.find(checksum);
-            if (effectIt != effectMap.end()) {
+            if (effectIt != effectMap.end())
+            {
                 return &effectIt->second;
             }
         }
         return nullptr; // Return nullptr if no Effect is found
     }
-    //Overload getBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
-    const Effect* getBySegmentAndChecksum(int segId, const Effect& effect) const {
+    // Overload getBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
+    const Effect *getBySegmentAndChecksum(int segId, const Effect &effect) const
+    {
         return getBySegmentAndChecksum(segId, effect.checksum);
     }
-
 
     bool isSegmentInitialized(int seg = LEFT_SEGMENT)
     {
@@ -383,7 +390,6 @@ public:
         setRear();
         setFront();
     }
-
 };
 
 class EffectCacheCollection

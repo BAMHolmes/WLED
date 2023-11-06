@@ -10,22 +10,30 @@ private:
   SubaruTelemetry ST = SubaruTelemetry();
   Overrides overrides;
   EffectCacheCollection cache = EffectCacheCollection();
-  EffectCollection effects = EffectCollection();  
+  EffectCollection effects = EffectCollection();
 
   void updateSegment(int seg, Effect effect)
   {
-    //const bool incomingIsPreset = effects.isPreset(effect);
+    // const bool incomingIsPreset = effects.isPreset(effect);
     const bool isTurningOff = effect.checksum == effects.off.checksum;
 
-    if(isTurningOff){
-      const auto& previouslySavedEffect = cache.generic.getBySegmentAndChecksum(seg, effect);
-      //Check if previouslySavedEffect is a nullptr - if so, it's not in the cache.
-      if(previouslySavedEffect && !effects.isPreset(previouslySavedEffect)){
+    if (isTurningOff)
+    {
+      const auto &previouslySavedEffect = cache.generic.getBySegmentAndChecksum(seg, effect);
+
+      // We only care about non-present effects being restored. Otherwise just turn
+      //   off the segment - I don't care anymore.
+      //   it's too difficult to try to ressurect a previously running effect on the segment.
+      
+      if (previouslySavedEffect && !effects.isPreset(previouslySavedEffect))
+      {
         effect = *previouslySavedEffect;
       }
-    }else{
+    }
+    else
+    {
       const Effect effectFromSegment = Effect(ST.seg(seg));
-      //const bool currentIsPreset = effects.isPreset(effectFromSegment);
+      // const bool currentIsPreset = effects.isPreset(effectFromSegment);
       cache.generic.setBySegmentAndChecksum(seg, effect, effectFromSegment);
     }
     int mode = effect.mode;
@@ -60,7 +68,6 @@ private:
     updateSegment(segment, effects.off);
   }
 
-
 public:
   void setup()
   {
@@ -93,70 +100,77 @@ public:
     Wire.endTransmission();                                   // End transmission
   }
 
-  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = 2000){
-    
+  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = 2000)
+  {
+
     strip.setTransition(transition);
 
-        updateSegment(LEFT_SEGMENT, effect);
-      
-        updateSegment(RIGHT_SEGMENT, effect);
-    
-        updateSegment(BRAKE_SEGMENT, effect);
-        
-        updateSegment(FRONT_SEGMENT, effect);
+    updateSegment(LEFT_SEGMENT, effect);
+
+    updateSegment(RIGHT_SEGMENT, effect);
+
+    updateSegment(BRAKE_SEGMENT, effect);
+
+    updateSegment(FRONT_SEGMENT, effect);
   }
 
-  void restoreGlobalEffect(EffectCache c, int transition = 2000){
+  void restoreGlobalEffect(EffectCache c, int transition = 2000)
+  {
     strip.setTransition(transition);
-        restorePreviousState(FRONT_SEGMENT);
-        // Don't touch the clicker if they're on
-        if (!ST.left_indicator_on && !overrides.LeftIndicator)
-        {
-          restorePreviousState(LEFT_SEGMENT);
-        }
-        // Don't touch the clicker if they're on
-        if (!ST.right_indicator_on && !overrides.RightIndicator)
-        {
-          restorePreviousState(RIGHT_SEGMENT);
-        }
-        // Don't touch the brake if it's being pressed
-        if (!ST.brake_pedal_pressed && !overrides.Brake && !ST.car_in_reverse && !overrides.Reverse)
-        {
-          strip.setTransition(0);
-          restorePreviousState(BRAKE_SEGMENT);
-        }
+    restorePreviousState(FRONT_SEGMENT);
+    // Don't touch the clicker if they're on
+    if (!ST.left_indicator_on && !overrides.LeftIndicator)
+    {
+      restorePreviousState(LEFT_SEGMENT);
+    }
+    // Don't touch the clicker if they're on
+    if (!ST.right_indicator_on && !overrides.RightIndicator)
+    {
+      restorePreviousState(RIGHT_SEGMENT);
+    }
+    // Don't touch the brake if it's being pressed
+    if (!ST.brake_pedal_pressed && !overrides.Brake && !ST.car_in_reverse && !overrides.Reverse)
+    {
+      strip.setTransition(0);
+      restorePreviousState(BRAKE_SEGMENT);
+    }
   }
 
-  void triggerDoorEffect(int transition = 2000){
+  void triggerDoorEffect(int transition = 2000)
+  {
     triggerGlobalEffect(effects.doorOpen, transition);
     Serial.println("++++++ DOOR EFFECT ACTIVATED ++++++");
   }
 
-  void triggerUnlockEffect(){
+  void triggerUnlockEffect()
+  {
     triggerGlobalEffect(effects.unlock);
     Serial.println("++++++ UNLOCK EFFECT ACTIVATED ++++++");
   }
 
-  void triggerLockEffect(){
+  void triggerLockEffect()
+  {
     triggerGlobalEffect(effects.lock);
     Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
   }
 
-  void triggerIgnitionEffect(){
+  void triggerIgnitionEffect()
+  {
     triggerGlobalEffect(effects.ignition);
     Serial.println("++++++ IGNITION EFFECT ACTIVATED ++++++");
   }
 
   void loop()
   {
-    if(!ST.checkSegmentIntegrity() || strip.isUpdating()) return;
+    if (!ST.checkSegmentIntegrity() || strip.isUpdating())
+      return;
     static bool left_previously_set = false;
     static bool door_previously_set = false;
     static bool right_previously_set = false;
     static bool brake_previously_set = false;
     static bool doors_unlocked_previously_set = false;
     static bool doors_locked_previously_set = false;
-    static bool ignition_previously_set = false;    
+    static bool ignition_previously_set = false;
 
     static bool brake_pedal_previous_state = false;
     static bool reverse_previous_state = false;
@@ -167,8 +181,8 @@ public:
     static bool doors_locked_previous_state = false;
     static bool ignition_previous_state = false;
 
-// Declare the struct for PreviousState
-    
+    // Declare the struct for PreviousState
+
     // static unsigned long brake_effect_expiration_timer = 0;
     // static unsigned long left_effect_expiration_timer = 0;
     // static unsigned long right_effect_expiration_timer = 0;
@@ -176,7 +190,7 @@ public:
     // static unsigned long unlock_effect_expiration_timer = 0;
     // static unsigned long lock_effect_expiration_timer = 0;
     // static unsigned long ignition_effect_expiration_timer = 0;
-    
+
     static unsigned long last_brake_press_time = 0;
     static unsigned long last_left_on_time = 0;
     static unsigned long last_right_on_time = 0;
@@ -195,12 +209,12 @@ public:
     /**
      * Update the state of all things Subaru
      */
-    
+
     ST.readTelemetry();
 
     /**
      * Print current state of segment
-    */
+     */
     printDetailsPeriodically();
     const bool reverse_state_change = reverse_previous_state != ST.car_in_reverse;
     reverse_previous_state = ST.car_in_reverse;
@@ -215,7 +229,8 @@ public:
       {
         if (!brake_previously_set || reverse_state_change)
         {
-          if(!overrides.checkOthers("brake")){
+          if (!overrides.checkOthers("brake"))
+          {
             cache.forBrake.refresh();
             strip.setTransition(0);
           }
@@ -223,13 +238,11 @@ public:
           {
             updateSegment(BRAKE_SEGMENT, effects.reverse);
             Serial.println("++++++ REVERSE PRESSED ++++++");
-
           }
           else
           {
             updateSegment(BRAKE_SEGMENT, effects.brake);
             Serial.println("++++++ BRAKE PRESSED ++++++");
-
           }
         }
         brake_previously_set = true;
@@ -258,7 +271,6 @@ public:
     }
     else if (!(ST.brake_pedal_pressed || ST.car_in_reverse) && !overrides.Brake)
     {
-
     }
 
     /**
@@ -299,7 +311,7 @@ public:
         else
         {
           // Pass the clicker cache to door cache
-          //cache.forDoor.setLeft(cache.forLeftTurn.LeftSegment);
+          // cache.forDoor.setLeft(cache.forLeftTurn.LeftSegment);
           // Enable door mode.
           triggerDoorEffect(INSTANT_TRANSITION);
         }
@@ -320,7 +332,7 @@ public:
     /**
      * RIGHT CLICKER SEQUENCE
      ***************************/
-    
+
     const bool right_state_change = right_indicator_previous_state != ST.right_indicator_on;
     right_indicator_previous_state = ST.right_indicator_on;
     overrides.setRightIndicator(last_right_on_time && (millis() - last_right_on_time < right_effect_delay));
@@ -354,7 +366,7 @@ public:
         else
         {
           // Pass the clicker cache to door cache
-          //cache.forDoor.setRight(cache.forRightTurn.RightSegment);
+          // cache.forDoor.setRight(cache.forRightTurn.RightSegment);
           // Enable door mode.
           triggerDoorEffect(INSTANT_TRANSITION);
         }
@@ -405,7 +417,6 @@ public:
     {
     }
 
-
     /**
      * DOORS UNLOCKED SEQUENCE
      ***************************/
@@ -426,9 +437,12 @@ public:
       }
       else if (!overrides.DoorsUnlocked)
       {
-        if(!overrides.Door){
+        if (!overrides.Door)
+        {
           restoreGlobalEffect(cache.forUnlock, INSTANT_TRANSITION);
-        }else{
+        }
+        else
+        {
           triggerDoorEffect(INSTANT_TRANSITION);
         }
         Serial.println("------ UNLOCK EFFECT DEACTIVATED ------");
@@ -452,16 +466,19 @@ public:
     {
       if (ST.doors_locked && !lockOverrideExpired && !doors_locked_previously_set)
       {
-          triggerGlobalEffect(effects.lock, INSTANT_TRANSITION);
-          Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
-          doors_locked_previously_set = true;
-          last_lock_time = millis();
+        triggerGlobalEffect(effects.lock, INSTANT_TRANSITION);
+        Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
+        doors_locked_previously_set = true;
+        last_lock_time = millis();
       }
       else if (!overrides.DoorsLocked)
       {
-        if(!overrides.Door){
+        if (!overrides.Door)
+        {
           restoreGlobalEffect(cache.forLock, INSTANT_TRANSITION);
-        }else{
+        }
+        else
+        {
           triggerDoorEffect(INSTANT_TRANSITION);
         }
         Serial.println("------ LOCK EFFECT DEACTIVATED ------");
@@ -492,9 +509,12 @@ public:
       }
       else if (!overrides.Ignition)
       {
-        if(!overrides.Door){
+        if (!overrides.Door)
+        {
           restoreGlobalEffect(cache.forIgnition, INSTANT_TRANSITION);
-        }else{
+        }
+        else
+        {
           triggerDoorEffect(INSTANT_TRANSITION);
         }
         Serial.println("------ IGNITION EFFECT DEACTIVATED ------");
@@ -505,7 +525,5 @@ public:
     else if (!ST.door_is_open && !overrides.Door)
     {
     }
-
-
   }
 };

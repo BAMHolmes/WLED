@@ -37,8 +37,9 @@ public:
 
     /**
      *  Constructor method SubaruTelemetry()
-    */
-    SubaruTelemetry(){
+     */
+    SubaruTelemetry()
+    {
         setupSegments();
     }
 
@@ -89,31 +90,32 @@ public:
     Segment door_right_segment_cache;
     Segment door_front_segment_cache;
 
-    static Segment& brakeSegment()
+    static Segment &brakeSegment()
     {
-        return strip.getSegment(BRAKE_SEGMENT);;
+        return strip.getSegment(BRAKE_SEGMENT);
+        ;
     }
-    static Segment& leftSegment()
+    static Segment &leftSegment()
     {
         return strip.getSegment(LEFT_SEGMENT);
     }
-    static Segment& rightSegment()
+    static Segment &rightSegment()
     {
         return strip.getSegment(RIGHT_SEGMENT);
     }
-    static Segment& frontSegment()
+    static Segment &frontSegment()
     {
         return strip.getSegment(FRONT_SEGMENT);
     }
-    static Segment& doorBrakeSegment()
+    static Segment &doorBrakeSegment()
     {
         return strip.getSegment(BRAKE_SEGMENT);
     }
-    static Segment& rearSegment()
+    static Segment &rearSegment()
     {
         return strip.getSegment(BRAKE_SEGMENT);
     }
-    static Segment& seg(uint8_t id)
+    static Segment &seg(uint8_t id)
     {
         return strip.getSegment(id);
     }
@@ -136,10 +138,10 @@ public:
         strip.setSegment(LEFT_SEGMENT, LEFT_SEGMENT_START, LEFT_SEGMENT_END, 1, 0, 0);
         strip.setSegment(BRAKE_SEGMENT, BRAKE_SEGMENT_START, BRAKE_SEGMENT_END, 1, 0, 0);
 
-        auto& front = frontSegment();
-        auto& rear = rearSegment();
-        auto& left = leftSegment();
-        auto& right = rightSegment();
+        auto &front = frontSegment();
+        auto &rear = rearSegment();
+        auto &left = leftSegment();
+        auto &right = rightSegment();
 
         right.setOption(SEG_OPTION_ON, false);
         right.setOption(SEG_OPTION_SELECTED, true);
@@ -149,7 +151,6 @@ public:
         rear.setOption(SEG_OPTION_SELECTED, true);
         front.setOption(SEG_OPTION_ON, false);
         front.setOption(SEG_OPTION_SELECTED, true);
-
     }
     bool checkSegmentIntegrity()
     {
@@ -169,7 +170,6 @@ public:
         integrityCheckResult &= strip.getSegment(RIGHT_SEGMENT).stop == RIGHT_SEGMENT_END;
 
         // Print all start and stop values to console.
-
 
         if (!integrityCheckResult && !previousIntegrityCheckResult)
         {
