@@ -14,18 +14,18 @@ private:
 
   void updateSegment(int seg, Effect effect)
   {
-    const bool incomingIsPreset = effects.isPreset(effect);
+    //const bool incomingIsPreset = effects.isPreset(effect);
     const bool isTurningOff = effect.checksum == effects.off.checksum;
 
     if(isTurningOff){
       const auto& previouslySavedEffect = cache.generic.getBySegmentAndChecksum(seg, effect);
       //Check if previouslySavedEffect is a nullptr - if so, it's not in the cache.
-      if(previouslySavedEffect){
+      if(previouslySavedEffect && !effects.isPreset(previouslySavedEffect)){
         effect = *previouslySavedEffect;
       }
     }else{
-      Effect effectFromSegment = Effect(ST.seg(seg));
-      const bool currentIsPreset = effects.isPreset(effectFromSegment);
+      const Effect effectFromSegment = Effect(ST.seg(seg));
+      //const bool currentIsPreset = effects.isPreset(effectFromSegment);
       cache.generic.setBySegmentAndChecksum(seg, effect, effectFromSegment);
     }
     int mode = effect.mode;

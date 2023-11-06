@@ -197,11 +197,11 @@ public:
             off.checksum};
     }
 
-    bool isPreset(const Effect& effect) const
+    bool isPreset(const Effect* effect) const
     {
         for (const auto& presetChecksum : presetChecksums)
         {
-            if (effect.checksum == presetChecksum)
+            if (effect->checksum == presetChecksum)
             {
                 return true;
             }
