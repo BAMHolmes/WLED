@@ -17,6 +17,7 @@
 #define LEFT_SEGMENT 1
 #define FRONT_SEGMENT 2
 #define RIGHT_SEGMENT 3
+#define UNIFIED_SEGMENT 4
 
 #define RIGHT_SEGMENT_START 0
 #define RIGHT_SEGMENT_END 200
@@ -26,6 +27,8 @@
 #define LEFT_SEGMENT_END 440
 #define BRAKE_SEGMENT_START 440
 #define BRAKE_SEGMENT_END 480
+#define UNIFIED_SEGMENT_START 0
+#define UNIFIED_SEGMENT_END 480
 
 #define INSTANT_TRANSITION 0
 #define MEDIUM_TRANSITION 1000
@@ -115,6 +118,10 @@ public:
     {
         return strip.getSegment(BRAKE_SEGMENT);
     }
+    static Segment &unifiedSegment()
+    {
+        return strip.getSegment(UNIFIED_SEGMENT);
+    }
     static Segment &seg(uint8_t id)
     {
         return strip.getSegment(id);
@@ -137,11 +144,13 @@ public:
         strip.setSegment(FRONT_SEGMENT, FRONT_SEGMENT_START, FRONT_SEGMENT_END, 1, 0, 0);
         strip.setSegment(LEFT_SEGMENT, LEFT_SEGMENT_START, LEFT_SEGMENT_END, 1, 0, 0);
         strip.setSegment(BRAKE_SEGMENT, BRAKE_SEGMENT_START, BRAKE_SEGMENT_END, 1, 0, 0);
+        strip.setSegment(UNIFIED_SEGMENT, UNIFIED_SEGMENT_START, UNIFIED_SEGMENT_END, 1, 0, 0);
 
         auto &front = frontSegment();
         auto &rear = rearSegment();
         auto &left = leftSegment();
         auto &right = rightSegment();
+        auto &unified = unifiedSegment();
 
         right.setOption(SEG_OPTION_ON, false);
         right.setOption(SEG_OPTION_SELECTED, true);
@@ -151,6 +160,8 @@ public:
         rear.setOption(SEG_OPTION_SELECTED, true);
         front.setOption(SEG_OPTION_ON, false);
         front.setOption(SEG_OPTION_SELECTED, true);
+        unified.setOption(SEG_OPTION_ON, false);
+        unified.setOption(SEG_OPTION_SELECTED, true);
     }
     bool checkSegmentIntegrity()
     {
@@ -160,15 +171,16 @@ public:
 
         // Check if each segment is assigned to the correct LED start and end
 
-        integrityCheckResult &= strip.getSegment(BRAKE_SEGMENT).start == BRAKE_SEGMENT_START;
-        integrityCheckResult &= strip.getSegment(BRAKE_SEGMENT).stop == BRAKE_SEGMENT_END;
-        integrityCheckResult &= strip.getSegment(LEFT_SEGMENT).start == LEFT_SEGMENT_START;
-        integrityCheckResult &= strip.getSegment(LEFT_SEGMENT).stop == LEFT_SEGMENT_END;
-        integrityCheckResult &= strip.getSegment(FRONT_SEGMENT).start == FRONT_SEGMENT_START;
-        integrityCheckResult &= strip.getSegment(FRONT_SEGMENT).stop == FRONT_SEGMENT_END;
-        integrityCheckResult &= strip.getSegment(RIGHT_SEGMENT).start == RIGHT_SEGMENT_START;
-        integrityCheckResult &= strip.getSegment(RIGHT_SEGMENT).stop == RIGHT_SEGMENT_END;
-
+        integrityCheckResult &= seg(BRAKE_SEGMENT).start == BRAKE_SEGMENT_START;
+        integrityCheckResult &= seg(BRAKE_SEGMENT).stop == BRAKE_SEGMENT_END;
+        integrityCheckResult &= seg(LEFT_SEGMENT).start == LEFT_SEGMENT_START;
+        integrityCheckResult &= seg(LEFT_SEGMENT).stop == LEFT_SEGMENT_END;
+        integrityCheckResult &= seg(FRONT_SEGMENT).start == FRONT_SEGMENT_START;
+        integrityCheckResult &= seg(FRONT_SEGMENT).stop == FRONT_SEGMENT_END;
+        integrityCheckResult &= seg(RIGHT_SEGMENT).start == RIGHT_SEGMENT_START;
+        integrityCheckResult &= seg(RIGHT_SEGMENT).stop == RIGHT_SEGMENT_END;
+        integrityCheckResult &= seg(UNIFIED_SEGMENT).start == UNIFIED_SEGMENT_START;
+        integrityCheckResult &= seg(UNIFIED_SEGMENT).stop == UNIFIED_SEGMENT_END;
         // Print all start and stop values to console.
 
         if (!integrityCheckResult && !previousIntegrityCheckResult)
@@ -178,7 +190,7 @@ public:
             Serial.println("LEFT_SEGMENT_START: " + String(strip.getSegment(LEFT_SEGMENT).start) + " LEFT_SEGMENT_END: " + String(strip.getSegment(LEFT_SEGMENT).stop) + "|" + String(LEFT_SEGMENT_START) + ":" + String(LEFT_SEGMENT_END));
             Serial.println("FRONT_SEGMENT_START: " + String(strip.getSegment(FRONT_SEGMENT).start) + " FRONT_SEGMENT_END: " + String(strip.getSegment(FRONT_SEGMENT).stop) + "|" + String(FRONT_SEGMENT_START) + ":" + String(FRONT_SEGMENT_END));
             Serial.println("RIGHT_SEGMENT_START: " + String(strip.getSegment(RIGHT_SEGMENT).start) + " RIGHT_SEGMENT_END: " + String(strip.getSegment(RIGHT_SEGMENT).stop) + "|" + String(RIGHT_SEGMENT_START) + ":" + String(RIGHT_SEGMENT_END));
-
+            Serial.println("UNIFIED_SEGMENT START: " + String(strip.getSegment(UNIFIED_SEGMENT).start) + " UNIFIED_SEGMENT_END: " + String(strip.getSegment(UNIFIED_SEGMENT).stop) + "|" + String(UNIFIED_SEGMENT_START) + ":" + String(UNIFIED_SEGMENT_END));
             Serial.println("Configuration incorrect, resetting segments...");
             setupSegments();
             return false;
@@ -187,15 +199,28 @@ public:
         return true;
     }
 
-    void select(int segment)
+    void selectOnly(int segment)
     {
         rightSegment().setOption(SEG_OPTION_SELECTED, 0);
         leftSegment().setOption(SEG_OPTION_SELECTED, 0);
         rearSegment().setOption(SEG_OPTION_SELECTED, 0);
         frontSegment().setOption(SEG_OPTION_SELECTED, 0);
-        strip.getSegment(segment).setOption(SEG_OPTION_SELECTED, 1);
+        seg(segment).setOption(SEG_OPTION_SELECTED, 1);
     }
-
+    void enableOnly(int segment){
+        rightSegment().setOption(SEG_OPTION_ON, 0);
+        leftSegment().setOption(SEG_OPTION_ON, 0);
+        rearSegment().setOption(SEG_OPTION_ON, 0);
+        frontSegment().setOption(SEG_OPTION_ON, 0);
+        seg(segment).setOption(SEG_OPTION_ON, 1);
+    }
+    void disable(int segment){
+        seg(segment).setOption(SEG_OPTION_ON, 0);
+    }
+    void selectAndEnableOnly(int segment){
+        selectOnly(segment);
+        enableOnly(segment);
+    }
     void selectAll()
     {
         rightSegment().setOption(SEG_OPTION_SELECTED, 1);
@@ -203,7 +228,29 @@ public:
         brakeSegment().setOption(SEG_OPTION_SELECTED, 1);
         frontSegment().setOption(SEG_OPTION_SELECTED, 1);
     }
+    void enableAll(){
+        rightSegment().setOption(SEG_OPTION_ON, 1);
+        leftSegment().setOption(SEG_OPTION_ON, 1);
+        rearSegment().setOption(SEG_OPTION_ON, 1);
+        frontSegment().setOption(SEG_OPTION_ON, 1);
+    }
+    void selectAndEnableAll(){
+        selectAll();
+        enableAll();
+    }
 
+    void select(int segment){
+        seg(segment).setOption(SEG_OPTION_SELECTED, 1);
+    }
+
+    void enable(int segment){
+        seg(segment).setOption(SEG_OPTION_ON, 1);
+    }
+
+    void selectAndEnable(int segment){
+        select(segment);
+        enable(segment);
+    }
     uint16_t readPCF8575()
     {
         uint16_t data = 0;

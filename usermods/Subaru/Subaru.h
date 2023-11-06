@@ -12,8 +12,14 @@ private:
   EffectCacheCollection cache = EffectCacheCollection();
   EffectCollection effects = EffectCollection();
 
-  void updateSegment(int seg, Effect effect)
+  void updateSegment(int seg, Effect effect = Effect(), int transition_speed = INSTANT_TRANSITION)
   {
+    strip.setTransition(transition_speed);
+    if(seg == UNIFIED_SEGMENT){
+      ST.selectAndEnableOnly(UNIFIED_SEGMENT);
+    }else{
+      ST.selectAndEnable(seg);
+    }
     // const bool incomingIsPreset = effects.isPreset(effect);
     const bool isTurningOff = effect.checksum == effects.off.checksum;
 
@@ -24,7 +30,7 @@ private:
       // We only care about non-present effects being restored. Otherwise just turn
       //   off the segment - I don't care anymore.
       //   it's too difficult to try to ressurect a previously running effect on the segment.
-      
+
       if (previouslySavedEffect && !effects.isPreset(previouslySavedEffect))
       {
         effect = *previouslySavedEffect;
@@ -100,43 +106,18 @@ public:
     Wire.endTransmission();                                   // End transmission
   }
 
-  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = 2000)
+  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = SLOW_TRANSITION)
   {
 
-    strip.setTransition(transition);
-
-    updateSegment(LEFT_SEGMENT, effect);
-
-    updateSegment(RIGHT_SEGMENT, effect);
-
-    updateSegment(BRAKE_SEGMENT, effect);
-
-    updateSegment(FRONT_SEGMENT, effect);
+    updateSegment(UNIFIED_SEGMENT, effect, transition);
   }
 
-  void restoreGlobalEffect(EffectCache c, int transition = 2000)
+  void restoreGlobalEffect(int transition_speed = SLOW_TRANSITION)
   {
-    strip.setTransition(transition);
-    restorePreviousState(FRONT_SEGMENT);
-    // Don't touch the clicker if they're on
-    if (!ST.left_indicator_on && !overrides.LeftIndicator)
-    {
-      restorePreviousState(LEFT_SEGMENT);
-    }
-    // Don't touch the clicker if they're on
-    if (!ST.right_indicator_on && !overrides.RightIndicator)
-    {
-      restorePreviousState(RIGHT_SEGMENT);
-    }
-    // Don't touch the brake if it's being pressed
-    if (!ST.brake_pedal_pressed && !overrides.Brake && !ST.car_in_reverse && !overrides.Reverse)
-    {
-      strip.setTransition(0);
-      restorePreviousState(BRAKE_SEGMENT);
-    }
+    updateSegment(UNIFIED_SEGMENT, effects.off, transition_speed);
   }
 
-  void triggerDoorEffect(int transition = 2000)
+  void triggerDoorEffect(int transition = SLOW_TRANSITION)
   {
     triggerGlobalEffect(effects.doorOpen, transition);
     Serial.println("++++++ DOOR EFFECT ACTIVATED ++++++");
@@ -262,7 +243,7 @@ public:
         else
         {
           strip.setTransition(0);
-          restorePreviousState(BRAKE_SEGMENT);
+          updateSegment(BRAKE_SEGMENT);
         }
         Serial.println("------ BRAKE/REVERSE RELEASED ------");
         brake_previously_set = false;
@@ -306,7 +287,7 @@ public:
         strip.setTransition(1000);
         if (!overrides.Door)
         {
-          restorePreviousState(LEFT_SEGMENT);
+          updateSegment(LEFT_SEGMENT);
         }
         else
         {
@@ -361,7 +342,7 @@ public:
 
         if (!overrides.Door)
         {
-          restorePreviousState(RIGHT_SEGMENT);
+          updateSegment(RIGHT_SEGMENT);
         }
         else
         {
@@ -406,7 +387,7 @@ public:
       }
       else if (!overrides.Door)
       {
-        restoreGlobalEffect(cache.forDoor);
+        restoreGlobalEffect();
         Serial.println("------ DOOR EFFECT DEACTIVATED ------");
 
         door_previously_set = false;
@@ -439,7 +420,7 @@ public:
       {
         if (!overrides.Door)
         {
-          restoreGlobalEffect(cache.forUnlock, INSTANT_TRANSITION);
+          restoreGlobalEffect(INSTANT_TRANSITION);
         }
         else
         {
@@ -475,7 +456,7 @@ public:
       {
         if (!overrides.Door)
         {
-          restoreGlobalEffect(cache.forLock, INSTANT_TRANSITION);
+          restoreGlobalEffect(INSTANT_TRANSITION);
         }
         else
         {
@@ -511,7 +492,7 @@ public:
       {
         if (!overrides.Door)
         {
-          restoreGlobalEffect(cache.forIgnition, INSTANT_TRANSITION);
+          restoreGlobalEffect(INSTANT_TRANSITION);
         }
         else
         {
