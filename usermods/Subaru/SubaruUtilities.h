@@ -1,5 +1,9 @@
 #include "wled.h"
 #include "SubaruTelemetry.h"
+#include <cstdint>
+#include <array>
+#include <unordered_map>
+#include <map>
 
 class Overrides
 {
@@ -93,21 +97,61 @@ public:
     bool RightIndicator;
     bool Ignition;
 };
-
 class Effect
 {
 public:
     uint8_t mode;
     uint32_t colors[3];
     uint8_t speed;
+    uint8_t fade;
     uint8_t palette;
     bool power;
+    uint32_t checksum;
 
-    Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t p, bool pw = true)
-        : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), palette(p), power(pw) {}
+    Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+        : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
+    {
+        checksum = calculateChecksum();
+    }
 
-    Effect(uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t p, bool pw = true)
-        : mode(m), colors{c1, c2, c3}, speed(s), palette(p), power(pw) {}
+    Effect(uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+        : mode(m), colors{c1, c2, c3}, speed(s), fade(f), palette(p), power(pw)
+    {
+        checksum = calculateChecksum();
+    }
+    Effect(const Segment& segment)
+        : mode(segment.mode),
+          colors{segment.colors[0], segment.colors[1], segment.colors[2]}, // Assuming default colors for color2 and color3
+          speed(segment.speed),
+          fade(255),
+          palette(segment.palette),
+          power(segment.getOption(SEG_OPTION_ON))
+    {
+        checksum = calculateChecksum();
+    }
+    bool isPreset(const std::array<uint32_t, 9> &presetChecksums) const
+    {
+        for (const auto &preset : presetChecksums)
+        {
+            if (checksum == preset)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    uint32_t calculateChecksum() const
+    {
+        uint32_t checksum = mode;
+        checksum += colors[0] + colors[1] + colors[2];
+        checksum += speed;
+        checksum += fade;
+        checksum += palette;
+        checksum += static_cast<uint32_t>(power);
+        return checksum;
+    }
 };
 
 class EffectCollection
@@ -121,32 +165,121 @@ public:
     Effect ignition;
     Effect unlock;
     Effect lock;
+    Effect off;
+    std::array<uint32_t, 9> presetChecksums;
 
-    EffectCollection() : doorOpen(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 0)),
-                         leftTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0)),
-                         rightTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0)),
-                         brake(Effect(FX_MODE_STATIC, 0xFF0000, 255, 0)),
-                         reverse(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 0)),
-                         ignition(Effect(FX_MODE_LOADING, 0xFFC68C, 0x000000, 0x000000, 225, 0)),
-                         unlock(Effect(FX_MODE_BLINK, 0xFFAA00, 200, 0)),
-                         lock(Effect(FX_MODE_BLINK, 0xFF0000, 200, 0)) {}
+    EffectCollection() : doorOpen(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
+                         leftTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 0)),
+                         rightTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 0)),
+                         brake(Effect(FX_MODE_STATIC, 0xFF0000, 255, 255, 0)),
+                         reverse(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
+                         ignition(Effect(FX_MODE_LOADING, 0xFFC68C, 0x000000, 0x000000, 225, 255, 0)),
+                         unlock(Effect(FX_MODE_BLINK, 0xFFAA00, 200, 255, 0)),
+                         lock(Effect(FX_MODE_BLINK, 0xFF0000, 200, 255, 0)),
+                         off(Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0))
+    {
+        presetChecksums = {
+            doorOpen.checksum,
+            leftTurn.checksum,
+            rightTurn.checksum,
+            brake.checksum,
+            reverse.checksum,
+            ignition.checksum,
+            unlock.checksum,
+            lock.checksum,
+            off.checksum};
+    }
+
+    bool isPreset(const Effect& effect) const
+    {
+        for (const auto& presetChecksum : presetChecksums)
+        {
+            if (effect.checksum == presetChecksum)
+            {
+                return true;
+            }
+        }
+        return false;
+    }    
 };
 
 class EffectCache
 {
+private:
+    std::map<int, std::unordered_map<uint32_t, Effect>> segmentEffectMap;
+
 public:
     Effect LeftSegment;
     Effect RightSegment;
     Effect RearSegment;
     Effect FrontSegment;
+    Effect Default = Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0);
+    SubaruTelemetry ST = SubaruTelemetry();
 
-    EffectCache() : LeftSegment(Effect(FX_MODE_STATIC, 0x000000, 255, 0)),
-                    RightSegment(Effect(FX_MODE_STATIC, 0x000000, 255, 0)),
-                    RearSegment(Effect(FX_MODE_STATIC, 0x000000, 255, 0)),
-                    FrontSegment(Effect(FX_MODE_STATIC, 0x000000, 255, 0))
+    EffectCache() : LeftSegment(Default),
+                    RightSegment(Default),
+                    RearSegment(Default),
+                    FrontSegment(Default)
     {
         refresh();
     }
+    Effect getBySegment(int segId){
+        switch (segId)
+        {
+        case LEFT_SEGMENT:
+            return LeftSegment;
+            break;
+        case RIGHT_SEGMENT:
+            return RightSegment;
+            break;
+        case BRAKE_SEGMENT:
+            return RearSegment;
+            break;
+        case FRONT_SEGMENT:
+            return FrontSegment;
+            break;
+        default:
+            return Default;
+            break;
+        }
+    }
+    Effect setBySegment(int segId, Effect effect){
+        switch (segId)
+        {
+        case LEFT_SEGMENT:
+            LeftSegment = effect;
+            break;
+        case RIGHT_SEGMENT:
+            RightSegment = effect;
+            break;
+        case BRAKE_SEGMENT:
+            RearSegment = effect;
+            break;
+        case FRONT_SEGMENT:
+            FrontSegment = effect;
+            break;
+        default:
+            return Default;
+            break;
+        }
+    }
+
+    void setBySegmentAndChecksum(int segId, uint32_t checksum, const Effect& effect) {
+        segmentEffectMap[segId][checksum] = effect;
+    }
+
+    const Effect* getBySegmentAndChecksum(int segId, uint32_t checksum) const {
+        const auto segmentIt = segmentEffectMap.find(segId);
+        if (segmentIt != segmentEffectMap.end()) {
+            const auto& effectMap = segmentIt->second;
+            const auto effectIt = effectMap.find(checksum);
+            if (effectIt != effectMap.end()) {
+                return &effectIt->second;
+            }
+        }
+        return nullptr; // Return nullptr if no Effect is found
+    }
+
 
     bool isSegmentInitialized(int seg = LEFT_SEGMENT)
     {
@@ -173,8 +306,8 @@ public:
         {
             return false;
         }
-        Segment leftSeg = strip.getSegments()[LEFT_SEGMENT];
-        LeftSegment = Effect(leftSeg.mode, leftSeg.colors[0], leftSeg.colors[1], leftSeg.colors[2], leftSeg.speed, leftSeg.palette, leftSeg.getOption(SEG_OPTION_ON));
+        auto &left = ST.leftSegment();
+        LeftSegment = Effect(left.mode, left.colors[0], left.colors[1], left.colors[2], left.speed, left.palette, left.getOption(SEG_OPTION_ON));
         return true;
     }
 
@@ -189,8 +322,8 @@ public:
         {
             return false;
         }
-        Segment rightSeg = strip.getSegments()[RIGHT_SEGMENT];
-        RightSegment = Effect(rightSeg.mode, rightSeg.colors[0], rightSeg.colors[1], rightSeg.colors[2], rightSeg.speed, rightSeg.palette, rightSeg.getOption(SEG_OPTION_ON));
+        auto &right = ST.rightSegment();
+        RightSegment = Effect(right.mode, right.colors[0], right.colors[1], right.colors[2], right.speed, right.palette, right.getOption(SEG_OPTION_ON));
         return true;
     }
     bool setRight(Effect rearSeg)
@@ -204,8 +337,8 @@ public:
         {
             return false;
         }
-        Segment rearSeg = strip.getSegments()[BRAKE_SEGMENT];
-        RearSegment = Effect(rearSeg.mode, rearSeg.colors[0], rearSeg.colors[1], rearSeg.colors[2], rearSeg.speed, rearSeg.palette, rearSeg.getOption(SEG_OPTION_ON));
+        auto &rear = ST.rearSegment();
+        RearSegment = Effect(rear.mode, rear.colors[0], rear.colors[1], rear.colors[2], rear.speed, rear.palette, rear.getOption(SEG_OPTION_ON));
         return true;
     }
     bool setRear(Effect rearSeg)
@@ -219,8 +352,8 @@ public:
         {
             return false;
         }
-        Segment frontSeg = strip.getSegment(FRONT_SEGMENT);
-        FrontSegment = Effect(frontSeg.mode, frontSeg.colors[0], frontSeg.colors[1], frontSeg.colors[2], frontSeg.speed, frontSeg.palette, frontSeg.getOption(SEG_OPTION_ON));
+        auto &front = ST.frontSegment();
+        FrontSegment = Effect(front.mode, front.colors[0], front.colors[1], front.colors[2], front.speed, front.palette, front.getOption(SEG_OPTION_ON));
         return true;
     }
     bool setFront(Effect frontSeg)
@@ -235,6 +368,7 @@ public:
         setRear();
         setFront();
     }
+
 };
 
 class EffectCacheCollection
@@ -248,6 +382,7 @@ public:
     EffectCache forReverse;
     EffectCache forLock;
     EffectCache forIgnition;
+    EffectCache generic;
 
-    EffectCacheCollection() : forDoor(), forBrake(), forLeftTurn(), forRightTurn(), forUnlock(), forReverse(), forLock(), forIgnition() {}
+    EffectCacheCollection() : forDoor(), forBrake(), forLeftTurn(), forRightTurn(), forUnlock(), forReverse(), forLock(), forIgnition(), generic() {}
 };

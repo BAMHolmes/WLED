@@ -7,7 +7,6 @@
 class Subaru : public Usermod
 {
 private:
-
   SubaruTelemetry ST = SubaruTelemetry();
   Overrides overrides;
   EffectCacheCollection cache = EffectCacheCollection();
@@ -15,35 +14,50 @@ private:
 
   void updateSegment(int seg, Effect effect)
   {
+    const bool incomingIsPreset = effects.isPreset(effect);
+    const bool isTurningOff = effect.checksum == effects.off.checksum;
+
+    if(isTurningOff){
+      //Override with what's in the cache - if cache hasn't been set, it will be off.
+      effect = cache.generic.getBySegment(seg);
+      cache.generic.setBySegment(seg, effects.off);
+    }else{
+      const Effect effectFromSegment = Effect(ST.seg(seg));
+      const bool currentIsPreset = effects.isPreset(effectFromSegment);
+      if(!currentIsPreset){
+        cache.generic.setBySegment(seg, effectFromSegment);
+      }
+    }
     int mode = effect.mode;
     uint32_t color1 = effect.colors[0];
     uint32_t color2 = effect.colors[1];
     uint32_t color3 = effect.colors[2];
     int speed = effect.speed;
+    uint8_t fade = effect.fade;
     uint8_t palette = effect.palette;
     bool on = effect.power;
-    /** Return if seg is not defined */
-
-    strip.setMode(seg, mode);
-    strip.setBrightness(255, true);
-    strip.getSegments()[seg].setOption(SEG_OPTION_ON, on);
     if (!on)
     {
       color1 = 0x000000;
       color2 = 0x000000;
       color3 = 0x000000;
     }
-    strip.getSegments()[seg].setColor(0, color1);
-    strip.getSegments()[seg].setColor(1, color2);
-    strip.getSegments()[seg].setColor(2, color3);
-    strip.getSegments()[seg].setPalette(palette);
 
-    strip.getSegments()[seg].speed = speed;
+    ST.seg(seg).setOption(SEG_OPTION_ON, on);
+    ST.seg(seg).fade_out(fade);
+    ST.seg(seg).setColor(0, color1);
+    ST.seg(seg).setColor(1, color2);
+    ST.seg(seg).setColor(2, color3);
+    ST.seg(seg).setPalette(palette);
+    ST.seg(seg).speed = speed;
+
+    strip.setMode(seg, mode);
+    strip.setBrightness(255, true);
     strip.trigger();
   }
-  void restorePreviousState(int segment, const Effect prevState)
+  void restorePreviousState(int segment)
   {
-    updateSegment(segment, prevState);
+    updateSegment(segment, effects.off);
   }
 
 
@@ -79,72 +93,63 @@ public:
     Wire.endTransmission();                                   // End transmission
   }
 
-  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 0), EffectCache c = EffectCache(), int transition = 2000){
+  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = 2000){
     
     strip.setTransition(transition);
-        c.setFront();
-        if (!ST.left_indicator_on && !overrides.LeftIndicator)
-        {
-          overrides.globalIsClear() && c.setLeft();
-          updateSegment(LEFT_SEGMENT, effect);
-        }
-        if (!ST.right_indicator_on && !overrides.RightIndicator)
-        {
-          overrides.globalIsClear() && c.setRight();
-          updateSegment(RIGHT_SEGMENT, effect);
-        }
-        if (!ST.brake_pedal_pressed && !overrides.Brake)
-        {
-          overrides.globalIsClear() && c.setRear();
-          updateSegment(BRAKE_SEGMENT, effect);
-        }
+
+        updateSegment(LEFT_SEGMENT, effect);
+      
+        updateSegment(RIGHT_SEGMENT, effect);
+    
+        updateSegment(BRAKE_SEGMENT, effect);
+        
         updateSegment(FRONT_SEGMENT, effect);
   }
 
   void restoreGlobalEffect(EffectCache c, int transition = 2000){
     strip.setTransition(transition);
-        restorePreviousState(FRONT_SEGMENT, c.FrontSegment);
+        restorePreviousState(FRONT_SEGMENT);
         // Don't touch the clicker if they're on
         if (!ST.left_indicator_on && !overrides.LeftIndicator)
         {
-          restorePreviousState(LEFT_SEGMENT, c.LeftSegment);
+          restorePreviousState(LEFT_SEGMENT);
         }
         // Don't touch the clicker if they're on
         if (!ST.right_indicator_on && !overrides.RightIndicator)
         {
-          restorePreviousState(RIGHT_SEGMENT, c.RightSegment);
+          restorePreviousState(RIGHT_SEGMENT);
         }
         // Don't touch the brake if it's being pressed
         if (!ST.brake_pedal_pressed && !overrides.Brake && !ST.car_in_reverse && !overrides.Reverse)
         {
           strip.setTransition(0);
-          restorePreviousState(BRAKE_SEGMENT, c.RearSegment);
+          restorePreviousState(BRAKE_SEGMENT);
         }
   }
 
   void triggerDoorEffect(int transition = 2000){
-    triggerGlobalEffect(effects.doorOpen, cache.forDoor, transition);
+    triggerGlobalEffect(effects.doorOpen, transition);
     Serial.println("++++++ DOOR EFFECT ACTIVATED ++++++");
   }
 
   void triggerUnlockEffect(){
-    triggerGlobalEffect(effects.unlock, cache.forUnlock);
+    triggerGlobalEffect(effects.unlock);
     Serial.println("++++++ UNLOCK EFFECT ACTIVATED ++++++");
   }
 
   void triggerLockEffect(){
-    triggerGlobalEffect(effects.lock, cache.forLock);
+    triggerGlobalEffect(effects.lock);
     Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
   }
 
   void triggerIgnitionEffect(){
-    triggerGlobalEffect(effects.ignition, cache.forIgnition);
+    triggerGlobalEffect(effects.ignition);
     Serial.println("++++++ IGNITION EFFECT ACTIVATED ++++++");
   }
 
   void loop()
   {
-
+    if(!ST.checkSegmentIntegrity() || strip.isUpdating()) return;
     static bool left_previously_set = false;
     static bool door_previously_set = false;
     static bool right_previously_set = false;
@@ -164,13 +169,13 @@ public:
 
 // Declare the struct for PreviousState
     
-    static unsigned long brake_effect_expiration_timer = 0;
-    static unsigned long left_effect_expiration_timer = 0;
-    static unsigned long right_effect_expiration_timer = 0;
-    static unsigned long door_effect_expiration_timer = 0;
-    static unsigned long unlock_effect_expiration_timer = 0;
-    static unsigned long lock_effect_expiration_timer = 0;
-    static unsigned long ignition_effect_expiration_timer = 0;
+    // static unsigned long brake_effect_expiration_timer = 0;
+    // static unsigned long left_effect_expiration_timer = 0;
+    // static unsigned long right_effect_expiration_timer = 0;
+    // static unsigned long door_effect_expiration_timer = 0;
+    // static unsigned long unlock_effect_expiration_timer = 0;
+    // static unsigned long lock_effect_expiration_timer = 0;
+    // static unsigned long ignition_effect_expiration_timer = 0;
     
     static unsigned long last_brake_press_time = 0;
     static unsigned long last_left_on_time = 0;
@@ -190,7 +195,7 @@ public:
     /**
      * Update the state of all things Subaru
      */
-    ST.checkSegmentIntegrity();
+    
     ST.readTelemetry();
 
     /**
@@ -244,7 +249,7 @@ public:
         else
         {
           strip.setTransition(0);
-          restorePreviousState(BRAKE_SEGMENT, cache.forBrake.RearSegment);
+          restorePreviousState(BRAKE_SEGMENT);
         }
         Serial.println("------ BRAKE/REVERSE RELEASED ------");
         brake_previously_set = false;
@@ -289,7 +294,7 @@ public:
         strip.setTransition(1000);
         if (!overrides.Door)
         {
-          restorePreviousState(LEFT_SEGMENT, cache.forLeftTurn.LeftSegment);
+          restorePreviousState(LEFT_SEGMENT);
         }
         else
         {
@@ -344,7 +349,7 @@ public:
 
         if (!overrides.Door)
         {
-          restorePreviousState(RIGHT_SEGMENT, cache.forRightTurn.RightSegment);
+          restorePreviousState(RIGHT_SEGMENT);
         }
         else
         {
@@ -414,7 +419,7 @@ public:
       if (ST.doors_unlocked && !unlockOverrideExpired && !doors_unlocked_previously_set)
       {
 
-        triggerGlobalEffect(effects.unlock, cache.forUnlock, INSTANT_TRANSITION);
+        triggerGlobalEffect(effects.unlock, INSTANT_TRANSITION);
         Serial.println("++++++ UNLOCK EFFECT ACTIVATED ++++++");
         doors_unlocked_previously_set = true;
         last_unlock_time = millis();
@@ -447,7 +452,7 @@ public:
     {
       if (ST.doors_locked && !lockOverrideExpired && !doors_locked_previously_set)
       {
-          triggerGlobalEffect(effects.lock, cache.forLock, INSTANT_TRANSITION);
+          triggerGlobalEffect(effects.lock, INSTANT_TRANSITION);
           Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
           doors_locked_previously_set = true;
           last_lock_time = millis();
@@ -480,7 +485,7 @@ public:
     {
       if (ST.ignition && !ignitionOverrideExpired && !ignition_previously_set)
       {
-        triggerGlobalEffect(effects.ignition, cache.forIgnition, INSTANT_TRANSITION);
+        triggerGlobalEffect(effects.ignition, INSTANT_TRANSITION);
         Serial.println("++++++ IGNITION EFFECT ACTIVATED ++++++");
         ignition_previously_set = true;
         last_ignition_time = millis();
