@@ -18,15 +18,15 @@ private:
     const bool isTurningOff = effect.checksum == effects.off.checksum;
 
     if(isTurningOff){
-      //Override with what's in the cache - if cache hasn't been set, it will be off.
-      effect = cache.generic.getBySegment(seg);
-      cache.generic.setBySegment(seg, effects.off);
-    }else{
-      const Effect effectFromSegment = Effect(ST.seg(seg));
-      const bool currentIsPreset = effects.isPreset(effectFromSegment);
-      if(!currentIsPreset){
-        cache.generic.setBySegment(seg, effectFromSegment);
+      const auto& previouslySavedEffect = cache.generic.getBySegmentAndChecksum(seg, effect);
+      //Check if previouslySavedEffect is a nullptr - if so, it's not in the cache.
+      if(previouslySavedEffect){
+        effect = *previouslySavedEffect;
       }
+    }else{
+      Effect effectFromSegment = Effect(ST.seg(seg));
+      const bool currentIsPreset = effects.isPreset(effectFromSegment);
+      cache.generic.setBySegmentAndChecksum(seg, effect, effectFromSegment);
     }
     int mode = effect.mode;
     uint32_t color1 = effect.colors[0];

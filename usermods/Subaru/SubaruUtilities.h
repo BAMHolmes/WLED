@@ -108,6 +108,13 @@ public:
     bool power;
     uint32_t checksum;
 
+    Effect() : mode(FX_MODE_STATIC), speed(255), fade(255), palette(0), power(false), checksum(0)
+    {
+        // You can set default values here
+        std::fill(std::begin(colors), std::end(colors), 0x000000);
+        checksum = calculateChecksum();
+    }
+
     Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
         : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
     {
@@ -267,6 +274,10 @@ public:
     void setBySegmentAndChecksum(int segId, uint32_t checksum, const Effect& effect) {
         segmentEffectMap[segId][checksum] = effect;
     }
+    //Overload setBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
+    void setBySegmentAndChecksum(int segId, const Effect& incomingEffect, const Effect& outgoingEffect) {
+        setBySegmentAndChecksum(segId, incomingEffect.checksum, outgoingEffect);
+    }
 
     const Effect* getBySegmentAndChecksum(int segId, uint32_t checksum) const {
         const auto segmentIt = segmentEffectMap.find(segId);
@@ -278,6 +289,10 @@ public:
             }
         }
         return nullptr; // Return nullptr if no Effect is found
+    }
+    //Overload getBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
+    const Effect* getBySegmentAndChecksum(int segId, const Effect& effect) const {
+        return getBySegmentAndChecksum(segId, effect.checksum);
     }
 
 
