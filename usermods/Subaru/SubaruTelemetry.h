@@ -12,12 +12,25 @@
 // #define DOOR_OPEN 5
 // #define LEFT_INDICATOR 23
 // #define RIGHT_INDICATOR 18
-#define BRAKE_SEGMENT 0
 #define REAR_SEGMENT 0
 #define LEFT_SEGMENT 1
 #define FRONT_SEGMENT 2
 #define RIGHT_SEGMENT 3
 #define UNIFIED_SEGMENT 4
+
+struct SubaruSegmentConfig {
+    int frontStart;
+    int frontEnd;
+    int leftStart;
+    int leftEnd;
+    int rightStart;
+    int rightEnd;
+    int rearStart;
+    int rearEnd;
+    int unifiedStart;
+    int unifiedEnd;
+};
+
 
 #define RIGHT_SEGMENT_START 0
 #define RIGHT_SEGMENT_END 200
@@ -25,24 +38,28 @@
 #define FRONT_SEGMENT_END 240
 #define LEFT_SEGMENT_START 240
 #define LEFT_SEGMENT_END 440
-#define BRAKE_SEGMENT_START 440
-#define BRAKE_SEGMENT_END 480
+#define REAR_SEGMENT_START 440
+#define REAR_SEGMENT_END 480
 #define UNIFIED_SEGMENT_START 0
 #define UNIFIED_SEGMENT_END 480
+
 
 #define INSTANT_TRANSITION 0
 #define MEDIUM_TRANSITION 1000
 #define SLOW_TRANSITION 2000
+
+static SubaruSegmentConfig SUBARU_SEGMENT_CONFIG = {FRONT_SEGMENT_START, FRONT_SEGMENT_END, LEFT_SEGMENT_START, LEFT_SEGMENT_END, RIGHT_SEGMENT_START, RIGHT_SEGMENT_END, REAR_SEGMENT_START, REAR_SEGMENT_END, UNIFIED_SEGMENT_START, UNIFIED_SEGMENT_END};
+
 class SubaruTelemetry
 {
 public:
     // Declare all the variables and members that need to be initialized
-
     /**
      *  Constructor method SubaruTelemetry()
      */
     SubaruTelemetry()
     {
+        // Use default values to set up the telemetry
         setupSegments();
     }
 
@@ -67,6 +84,7 @@ public:
     bool doors_locked = false;
     bool car_in_reverse = false;
     bool ignition = true;
+    bool unified = false;
     bool EXT_PIN_1 = false, EXT_PIN_2 = false, EXT_PIN_3 = false, EXT_PIN_4 = false, EXT_PIN_5 = false, EXT_PIN_6 = false, EXT_PIN_7 = false, EXT_PIN_8 = false,
          EXT_PIN_9 = false, EXT_PIN_10 = false, EXT_PIN_11 = false, EXT_PIN_12 = false, EXT_PIN_13 = false, EXT_PIN_14 = false, EXT_PIN_15 = false, EXT_PIN_16 = false;
     unsigned long lastTime = 0;
@@ -83,21 +101,6 @@ public:
     uint8_t preLeftBrightness = 255;
     uint8_t preFrontBrightness = 255;
 
-    // Declare all the Segment members
-    Segment brake_segment_cache;
-    Segment left_segment_cache;
-    Segment right_segment_cache;
-    Segment front_segment_cache;
-    Segment door_brake_segment_cache;
-    Segment door_left_segment_cache;
-    Segment door_right_segment_cache;
-    Segment door_front_segment_cache;
-
-    static Segment &brakeSegment()
-    {
-        return strip.getSegment(BRAKE_SEGMENT);
-        ;
-    }
     static Segment &leftSegment()
     {
         return strip.getSegment(LEFT_SEGMENT);
@@ -110,13 +113,9 @@ public:
     {
         return strip.getSegment(FRONT_SEGMENT);
     }
-    static Segment &doorBrakeSegment()
-    {
-        return strip.getSegment(BRAKE_SEGMENT);
-    }
     static Segment &rearSegment()
     {
-        return strip.getSegment(BRAKE_SEGMENT);
+        return strip.getSegment(REAR_SEGMENT);
     }
     static Segment &unifiedSegment()
     {
@@ -138,59 +137,108 @@ public:
         uint8_t cct;
     } previousLeftState, previousRightState, previousBrakeState, previousFrontState;
 
-    void setupSegments()
-    {
-        strip.setSegment(RIGHT_SEGMENT, RIGHT_SEGMENT_START, RIGHT_SEGMENT_END, 1, 0, 0);
-        strip.setSegment(FRONT_SEGMENT, FRONT_SEGMENT_START, FRONT_SEGMENT_END, 1, 0, 0);
-        strip.setSegment(LEFT_SEGMENT, LEFT_SEGMENT_START, LEFT_SEGMENT_END, 1, 0, 0);
-        strip.setSegment(BRAKE_SEGMENT, BRAKE_SEGMENT_START, BRAKE_SEGMENT_END, 1, 0, 0);
-        strip.setSegment(UNIFIED_SEGMENT, UNIFIED_SEGMENT_START, UNIFIED_SEGMENT_END, 1, 0, 0);
-
-        auto &front = frontSegment();
-        auto &rear = rearSegment();
-        auto &left = leftSegment();
-        auto &right = rightSegment();
+    void unifiedMode(){
+        strip.purgeSegments(true);
+        strip.setSegment(UNIFIED_SEGMENT, SUBARU_SEGMENT_CONFIG.unifiedStart, SUBARU_SEGMENT_CONFIG.unifiedEnd, 1, 0, 0);
         auto &unified = unifiedSegment();
-
-        right.setOption(SEG_OPTION_ON, false);
-        right.setOption(SEG_OPTION_SELECTED, true);
-        left.setOption(SEG_OPTION_ON, false);
-        left.setOption(SEG_OPTION_SELECTED, true);
-        rear.setOption(SEG_OPTION_ON, false);
-        rear.setOption(SEG_OPTION_SELECTED, true);
-        front.setOption(SEG_OPTION_ON, false);
-        front.setOption(SEG_OPTION_SELECTED, true);
         unified.setOption(SEG_OPTION_ON, false);
         unified.setOption(SEG_OPTION_SELECTED, true);
     }
-    bool checkSegmentIntegrity()
+    void segmentedMode(){
+        strip.setSegment(REAR_SEGMENT, SUBARU_SEGMENT_CONFIG.rearStart, SUBARU_SEGMENT_CONFIG.rearEnd, 1, 0, 0);
+        strip.setSegment(RIGHT_SEGMENT, SUBARU_SEGMENT_CONFIG.rightStart, SUBARU_SEGMENT_CONFIG.rightEnd, 1, 0, 0);
+        strip.setSegment(FRONT_SEGMENT, SUBARU_SEGMENT_CONFIG.frontStart, SUBARU_SEGMENT_CONFIG.frontEnd, 1, 0, 0);
+        strip.setSegment(LEFT_SEGMENT, SUBARU_SEGMENT_CONFIG.leftStart, SUBARU_SEGMENT_CONFIG.leftEnd, 1, 0, 0);
+        
+        auto &rear = rearSegment();
+        auto &right = rightSegment();
+        auto &front = frontSegment();
+        auto &left = leftSegment();
+
+        rear.setOption(SEG_OPTION_ON, false);
+        rear.setOption(SEG_OPTION_SELECTED, true);
+        right.setOption(SEG_OPTION_ON, false);
+        right.setOption(SEG_OPTION_SELECTED, true);
+        front.setOption(SEG_OPTION_ON, false);
+        front.setOption(SEG_OPTION_SELECTED, true);
+        left.setOption(SEG_OPTION_ON, false);
+        left.setOption(SEG_OPTION_SELECTED, true);
+
+    }
+    void setupSegments()
     {
+        if(unified){
+            unifiedMode();
+        }else{
+            segmentedMode();
+        }
+    }
+
+    bool checkSegmentIntegrity()
+    {  
+        if(strip.isUpdating()){
+            return false;
+        }
         static bool previousIntegrityCheckResult = true;
 
         bool integrityCheckResult = true;
 
-        // Check if each segment is assigned to the correct LED start and end
+        //Check if each segment is a nullptr and if it is active
+        if(unified){
+            if(seg(REAR_SEGMENT).isActive()){
+                integrityCheckResult &= seg(REAR_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rearStart;
+            }
+            if(seg(LEFT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(LEFT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.leftStart;
+            }
+            if(seg(FRONT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(FRONT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.frontStart;
+            }
+            if(seg(RIGHT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(RIGHT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rightStart;
+            }
+            if(seg(UNIFIED_SEGMENT).isActive()){
+                integrityCheckResult &= seg(UNIFIED_SEGMENT).start == SUBARU_SEGMENT_CONFIG.unifiedStart;
+            }
+            if(seg(REAR_SEGMENT).isActive()){
+                integrityCheckResult &= seg(REAR_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rearEnd;
+            }
+            if(seg(LEFT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(LEFT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.leftEnd;
+            }
+            if(seg(FRONT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(FRONT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.frontEnd;
+            }
+            if(seg(RIGHT_SEGMENT).isActive()){
+                integrityCheckResult &= seg(RIGHT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rightEnd;
+            }
+        }else{
+            integrityCheckResult &= seg(UNIFIED_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.unifiedEnd;
+        }
 
-        integrityCheckResult &= seg(BRAKE_SEGMENT).start == BRAKE_SEGMENT_START;
-        integrityCheckResult &= seg(BRAKE_SEGMENT).stop == BRAKE_SEGMENT_END;
-        integrityCheckResult &= seg(LEFT_SEGMENT).start == LEFT_SEGMENT_START;
-        integrityCheckResult &= seg(LEFT_SEGMENT).stop == LEFT_SEGMENT_END;
-        integrityCheckResult &= seg(FRONT_SEGMENT).start == FRONT_SEGMENT_START;
-        integrityCheckResult &= seg(FRONT_SEGMENT).stop == FRONT_SEGMENT_END;
-        integrityCheckResult &= seg(RIGHT_SEGMENT).start == RIGHT_SEGMENT_START;
-        integrityCheckResult &= seg(RIGHT_SEGMENT).stop == RIGHT_SEGMENT_END;
-        integrityCheckResult &= seg(UNIFIED_SEGMENT).start == UNIFIED_SEGMENT_START;
-        integrityCheckResult &= seg(UNIFIED_SEGMENT).stop == UNIFIED_SEGMENT_END;
+        
         // Print all start and stop values to console.
 
         if (!integrityCheckResult && !previousIntegrityCheckResult)
         {
+            
             Serial.println("Segment integrity check result: " + String(integrityCheckResult));
-            Serial.println("BRAKE_SEGMENT_START: " + String(strip.getSegment(BRAKE_SEGMENT).start) + " BRAKE_SEGMENT_END: " + String(strip.getSegment(BRAKE_SEGMENT).stop) + "|" + String(BRAKE_SEGMENT_START) + ":" + String(BRAKE_SEGMENT_END));
-            Serial.println("LEFT_SEGMENT_START: " + String(strip.getSegment(LEFT_SEGMENT).start) + " LEFT_SEGMENT_END: " + String(strip.getSegment(LEFT_SEGMENT).stop) + "|" + String(LEFT_SEGMENT_START) + ":" + String(LEFT_SEGMENT_END));
-            Serial.println("FRONT_SEGMENT_START: " + String(strip.getSegment(FRONT_SEGMENT).start) + " FRONT_SEGMENT_END: " + String(strip.getSegment(FRONT_SEGMENT).stop) + "|" + String(FRONT_SEGMENT_START) + ":" + String(FRONT_SEGMENT_END));
-            Serial.println("RIGHT_SEGMENT_START: " + String(strip.getSegment(RIGHT_SEGMENT).start) + " RIGHT_SEGMENT_END: " + String(strip.getSegment(RIGHT_SEGMENT).stop) + "|" + String(RIGHT_SEGMENT_START) + ":" + String(RIGHT_SEGMENT_END));
-            Serial.println("UNIFIED_SEGMENT START: " + String(strip.getSegment(UNIFIED_SEGMENT).start) + " UNIFIED_SEGMENT_END: " + String(strip.getSegment(UNIFIED_SEGMENT).stop) + "|" + String(UNIFIED_SEGMENT_START) + ":" + String(UNIFIED_SEGMENT_END));
+            if(!unified){
+                if(seg(REAR_SEGMENT).isActive()){
+                    Serial.println("REAR_SEGMENT_START: " + String(seg(REAR_SEGMENT).start) + " REAR_SEGMENT_END: " + String(seg(REAR_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearEnd));
+                }
+                if(seg(LEFT_SEGMENT).isActive()){
+                    Serial.println("LEFT_SEGMENT_START: " + String(seg(LEFT_SEGMENT).start) + " LEFT_SEGMENT_END: " + String(seg(LEFT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.leftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.leftEnd));
+                }
+                if(seg(FRONT_SEGMENT).isActive()){
+                    Serial.println("FRONT_SEGMENT_START: " + String(seg(FRONT_SEGMENT).start) + " FRONT_SEGMENT_END: " + String(seg(FRONT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontEnd));
+                }
+                if(seg(RIGHT_SEGMENT).isActive()){
+                    Serial.println("RIGHT_SEGMENT_START: " + String(seg(RIGHT_SEGMENT).start) + " RIGHT_SEGMENT_END: " + String(seg(RIGHT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rightEnd));
+                }
+            }else{
+                Serial.println("UNIFIED_SEGMENT_START: " + String(seg(UNIFIED_SEGMENT).start) + " UNIFIED_SEGMENT_END: " + String(seg(UNIFIED_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.unifiedStart) + ":" + String(SUBARU_SEGMENT_CONFIG.unifiedEnd));
+            }
             Serial.println("Configuration incorrect, resetting segments...");
             setupSegments();
             return false;
@@ -225,7 +273,7 @@ public:
     {
         rightSegment().setOption(SEG_OPTION_SELECTED, 1);
         leftSegment().setOption(SEG_OPTION_SELECTED, 1);
-        brakeSegment().setOption(SEG_OPTION_SELECTED, 1);
+        rearSegment().setOption(SEG_OPTION_SELECTED, 1);
         frontSegment().setOption(SEG_OPTION_SELECTED, 1);
     }
     void enableAll(){

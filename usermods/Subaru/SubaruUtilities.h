@@ -4,6 +4,10 @@
 #include <array>
 #include <unordered_map>
 #include <map>
+#include <vector>
+#include <algorithm>
+#include <chrono>
+SubaruTelemetry ST;
 
 class Overrides
 {
@@ -221,7 +225,6 @@ public:
     Effect RearSegment;
     Effect FrontSegment;
     Effect Default = Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0);
-    SubaruTelemetry ST = SubaruTelemetry();
 
     EffectCache() : LeftSegment(Default),
                     RightSegment(Default),
@@ -240,7 +243,7 @@ public:
         case RIGHT_SEGMENT:
             return RightSegment;
             break;
-        case BRAKE_SEGMENT:
+        case REAR_SEGMENT:
             return RearSegment;
             break;
         case FRONT_SEGMENT:
@@ -261,7 +264,7 @@ public:
         case RIGHT_SEGMENT:
             RightSegment = effect;
             break;
-        case BRAKE_SEGMENT:
+        case REAR_SEGMENT:
             RearSegment = effect;
             break;
         case FRONT_SEGMENT:
@@ -355,7 +358,7 @@ public:
     }
     bool setRear()
     {
-        if (!isSegmentInitialized(BRAKE_SEGMENT))
+        if (!isSegmentInitialized(REAR_SEGMENT))
         {
             return false;
         }
@@ -406,4 +409,179 @@ public:
     EffectCache generic;
 
     EffectCacheCollection() : forDoor(), forBrake(), forLeftTurn(), forRightTurn(), forUnlock(), forReverse(), forLock(), forIgnition(), generic() {}
+};
+
+struct SubaruTransition
+{
+    int segment;
+    Effect effectStarter;
+    Effect effect;
+    int speed;
+};
+
+class QueueItem
+{
+public:
+    Effect effect;
+    std::vector<int> segmentIds;
+    std::chrono::seconds duration;
+    unsigned int transitionSpeed;
+    bool interrupted; // Indicates if this effect was interrupted by another effect
+    std::chrono::seconds remainingDuration; // Time left for this effect if it was interrupted
+
+    QueueItem(const Effect &eff, const std::vector<int> &segIds, std::chrono::seconds dur, unsigned int transSpeed)
+        : effect(eff), segmentIds(segIds), duration(dur), transitionSpeed(transSpeed), interrupted(false), remainingDuration(0) {}
+};
+class QueueManager
+{
+private:
+    bool effectInTransition = false; // Indicates if the current effect is in transition
+    EffectCollection effects; // This will store all available effects
+    std::vector<QueueItem> queue;
+    EffectCacheCollection effectCache; // This will handle the current effect on segments
+    std::chrono::high_resolution_clock::time_point lastUpdateTime; // Replace static variable with a member variable
+    std::chrono::high_resolution_clock::time_point effectEndTime; // When the current effect ends
+    std::chrono::seconds remainingDuration; // Remaining duration for the currently interrupted effect
+
+    // Function to find an effect in the queue
+    std::vector<QueueItem>::iterator findEffectInQueue(uint32_t checksum)
+    {
+        return std::find_if(queue.begin(), queue.end(), [checksum](const QueueItem &item)
+                            { return item.effect.checksum == checksum; });
+    }
+
+    // Function to revert the segment to its default effect
+    void revertToDefaultEffect(const std::vector<int> &segmentIds, unsigned int transitionSpeed)
+    {
+        // Assuming 'effects.off' is the default effect
+        for (int segmentId : segmentIds)
+        {
+            applyEffectToSegment(effects.off, transitionSpeed, {segmentId}); // Ensuring each segment ID is sent as a vector
+        }
+    }
+    // Function to apply an effect to a segment
+    void applyEffectToSegment(const Effect &effect, unsigned int transitionSpeed, const std::vector<int> &segmentIds)
+    {
+        strip.setTransition(transitionSpeed);
+        int mode = effect.mode;
+        uint32_t color1 = effect.colors[0];
+        uint32_t color2 = effect.colors[1];
+        uint32_t color3 = effect.colors[2];
+        int speed = effect.speed;
+        uint8_t fade = effect.fade;
+        uint8_t palette = effect.palette;
+        bool on = effect.power;
+
+        // Check if the effect is to turn the power off, and set colors to black if so
+        if (!on)
+        {
+            color1 = 0x000000;
+            color2 = 0x000000;
+            color3 = 0x000000;
+        }
+
+        for (int segmentId : segmentIds)
+        {
+            // Apply settings to each segment
+            ST.seg(segmentId).setOption(SEG_OPTION_ON, on);
+            ST.seg(segmentId).fade_out(fade);
+            ST.seg(segmentId).setColor(0, color1);
+            ST.seg(segmentId).setColor(1, color2);
+            ST.seg(segmentId).setColor(2, color3);
+            ST.seg(segmentId).setPalette(palette);
+            ST.seg(segmentId).speed = speed;
+            strip.setMode(segmentId, mode);
+            strip.setBrightness(255, true); // Assuming full brightness is the default
+        }
+
+        // Trigger the update for the segments
+        strip.trigger();
+    }
+
+public:
+    QueueManager()
+    {
+        // Initialize with the default effect for all segments
+        std::vector<int> allSegments = {LEFT_SEGMENT, RIGHT_SEGMENT, REAR_SEGMENT, FRONT_SEGMENT};
+        
+        // Set the default effect with an instant transition for all segments
+        revertToDefaultEffect(allSegments, INSTANT_TRANSITION);
+    }
+
+    void addToQueue(const Effect &effect, const std::vector<int> &segmentIds, std::chrono::seconds duration, unsigned int transitionSpeed)
+    {
+        auto now = std::chrono::high_resolution_clock::now();
+        if (!queue.empty() && effectInTransition)
+        {
+            // Get the current effect which is being interrupted
+            QueueItem &current = queue.front();
+            
+            // Calculate and store the remaining duration of the current effect if it's interrupted
+            current.remainingDuration = std::chrono::duration_cast<std::chrono::seconds>(effectEndTime - now);
+            current.interrupted = true;  // Mark the current effect as interrupted
+        }
+
+        // Add the new effect to the queue
+        queue.emplace_back(effect, segmentIds, duration, transitionSpeed);
+
+        // If the added effect is shorter than the remaining time of the current effect,
+        // we need to prepare to resume the current effect after the short effect ends
+        if (!queue.empty() && queue.size() > 1)
+        {
+            QueueItem &next = queue.back();  // The effect that was just added
+            QueueItem &current = queue.front(); // The current effect being played
+            
+            if (next.duration < current.remainingDuration)
+            {
+                // This new effect will finish before the current (interrupted) one should have,
+                // so we need to split the current effect's remaining time
+                QueueItem resumedEffect = current;
+                resumedEffect.duration = current.remainingDuration - next.duration;
+                resumedEffect.remainingDuration = std::chrono::seconds(0);
+                resumedEffect.interrupted = false;
+                
+                // Insert the resumed effect into the queue after the next effect
+                queue.insert(queue.begin() + 1, resumedEffect);
+            }
+        }
+    }
+
+
+    void processQueue()
+    {
+        auto now = std::chrono::high_resolution_clock::now();
+        if (queue.empty() || (effectInTransition && now < effectEndTime)) {
+            return; // Skip processing if there's no update needed
+        }
+        if (!queue.empty() && (now >= effectEndTime || !effectInTransition))
+        {
+            effectInTransition = false; // Reset the transition flag
+            QueueItem &current = queue.front();
+
+            // Check if the current effect's duration has passed
+            if (now >= effectEndTime)
+            {
+                // Apply the default effect to each segment if the queue has no upcoming item
+                if (queue.size() == 1 && !current.interrupted)
+                {
+                    revertToDefaultEffect(current.segmentIds, current.transitionSpeed);
+                }
+                queue.erase(queue.begin()); // Remove the processed item from the queue
+            }
+
+            if (!queue.empty())
+            {
+                // Set up the next effect
+                QueueItem &next = queue.front();
+                applyEffectToSegment(next.effect, next.transitionSpeed, next.segmentIds);
+                effectEndTime = now + next.duration; // Schedule when the next effect should end
+                effectInTransition = true; // Indicate that we've started a new effect
+            }
+        }
+    }
+    // Function to get the current effect on a segment
+    Effect getCurrentEffect(int segmentId)
+    {
+        return effectCache.generic.getBySegment(segmentId);
+    }
 };
