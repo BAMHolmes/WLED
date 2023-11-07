@@ -104,6 +104,7 @@ public:
 class Effect
 {
 public:
+    String name;
     uint8_t mode;
     uint32_t colors[3];
     uint8_t speed;
@@ -112,23 +113,36 @@ public:
     bool power;
     uint32_t checksum;
 
-    Effect() : mode(FX_MODE_STATIC), speed(255), fade(255), palette(0), power(false), checksum(0)
+    Effect() : name("Off"), mode(FX_MODE_STATIC), speed(255), fade(255), palette(0), power(false), checksum(0)
     {
         // You can set default values here
         std::fill(std::begin(colors), std::end(colors), 0x000000);
         checksum = calculateChecksum();
     }
 
-    Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
-        : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
+    Effect(String n, uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+        : name(n), mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
     {
         checksum = calculateChecksum();
     }
 
-    Effect(uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+    Effect(String n, uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
         : mode(m), colors{c1, c2, c3}, speed(s), fade(f), palette(p), power(pw)
     {
         checksum = calculateChecksum();
+    }
+    Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+        : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
+    {
+        checksum = calculateChecksum();
+        name = "Undefined";
+    }
+
+    Effect(uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
+        : colors{c1, c2, c3}, speed(s), fade(f), palette(p), power(pw)
+    {
+        checksum = calculateChecksum();
+        name = "Undefined";
     }
     Effect(const Segment &segment)
         : mode(segment.mode),
@@ -139,6 +153,20 @@ public:
           power(segment.getOption(SEG_OPTION_ON))
     {
         checksum = calculateChecksum();
+    }
+    //Return a reference to an effect based on the checksum from a segment
+    Effect &operator=(const Segment &segment)
+    {
+        mode = segment.mode;
+        colors[0] = segment.colors[0];
+        colors[1] = segment.colors[1];
+        colors[2] = segment.colors[2];
+        speed = segment.speed;
+        fade = 255;
+        palette = segment.palette;
+        power = segment.getOption(SEG_OPTION_ON);
+        checksum = calculateChecksum();
+        return *this;
     }
     bool isPreset(const std::array<uint32_t, 9> &presetChecksums) const
     {
@@ -179,15 +207,15 @@ public:
     Effect off;
     std::array<uint32_t, 9> presetChecksums;
 
-    EffectCollection() : doorOpen(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
-                         leftTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 0)),
-                         rightTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 0)),
-                         brake(Effect(FX_MODE_STATIC, 0xFF0000, 255, 255, 0)),
-                         reverse(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
-                         ignition(Effect(FX_MODE_LOADING, 0xFFC68C, 0x000000, 0x000000, 225, 255, 0)),
-                         unlock(Effect(FX_MODE_BLINK, 0xFFAA00, 200, 255, 0)),
-                         lock(Effect(FX_MODE_BLINK, 0xFF0000, 200, 255, 0)),
-                         off(Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0))
+    EffectCollection() : doorOpen(Effect("Door Open", FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
+                         leftTurn(Effect("Left Turn", FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 0)),
+                         rightTurn(Effect("Right Turn", FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 0)),
+                         brake(Effect("Brake", FX_MODE_STATIC, 0xFF0000, 255, 255, 0)),
+                         reverse(Effect("Reverse", FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
+                         ignition(Effect("Ignition", FX_MODE_LOADING, 0xFFC68C, 0x000000, 0x000000, 225, 255, 0)),
+                         unlock(Effect("Unlock", FX_MODE_BLINK, 0xFFAA00, 200, 255, 0)),
+                         lock(Effect("Lock", FX_MODE_BLINK, 0xFF0000, 200, 255, 0)),
+                         off(Effect("Off", FX_MODE_STATIC, 0x000000, 255, 255, 0))
     {
         presetChecksums = {
             doorOpen.checksum,
@@ -199,8 +227,28 @@ public:
             unlock.checksum,
             lock.checksum,
             off.checksum};
+        printAll();
     }
-
+    void printAll(){
+        Serial.println("****** EFFECTS LEGEND ********");
+        for (const auto &effect : {doorOpen, leftTurn, rightTurn, brake, reverse, ignition, unlock, lock, off})
+        {
+            Serial.println(effect.name + ": " + String(effect.checksum));
+        }
+        Serial.println("******************************");
+    }
+    //Get effect by checksum
+    Effect getByChecksum(uint32_t checksum) const
+    {
+        for (const auto &effect : {doorOpen, leftTurn, rightTurn, brake, reverse, ignition, unlock, lock, off})
+        {
+            if (effect.checksum == checksum)
+            {
+                return effect;
+            }
+        }
+        return off;
+    }
     bool isPreset(const Effect *effect) const
     {
         for (const auto &presetChecksum : presetChecksums)
@@ -224,8 +272,8 @@ public:
     Effect RightSegment;
     Effect RearSegment;
     Effect FrontSegment;
-    Effect Default = Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0);
-
+    Effect Default = Effect("Off", FX_MODE_STATIC, 0x000000, 255, 255, 0);
+    EffectCollection effects;
     EffectCache() : LeftSegment(Default),
                     RightSegment(Default),
                     RearSegment(Default),

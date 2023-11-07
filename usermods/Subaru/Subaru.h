@@ -20,8 +20,10 @@ class Subaru : public Usermod
 {
 private:
   Overrides overrides;
-  EffectCacheCollection cache = EffectCacheCollection();
+  Effect effect;
   EffectCollection effects = EffectCollection();
+  EffectCacheCollection cache = EffectCacheCollection();
+
   SubaruTelemetry ST;
   QueueManager queueManager;
 
@@ -338,7 +340,12 @@ public:
    * A method that checks if each segment is assigned to the correct LED start and end. If a change/discrepancy is detected, run setup()
    */
 
-  void printSegmentDetails() {}
+  void printSegmentDetails() {
+    gray("FRONT: " + Effect(ST.seg(FRONT_SEGMENT)).checksum);
+    gray("LEFT" + Effect(ST.seg(FRONT_SEGMENT)).checksum);
+    gray("RIGHT: " + Effect(ST.seg(FRONT_SEGMENT)).checksum);
+    gray("REAR: " + Effect(ST.seg(FRONT_SEGMENT)).checksum);
+  }
 
   void printDetailsPeriodically()
   {
@@ -358,40 +365,6 @@ public:
     Wire.endTransmission();                                   // End transmission
   }
 
-  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = SLOW_TRANSITION)
-  {
-
-    updateSegment(UNIFIED_SEGMENT, effect, transition);
-  }
-
-  void restoreGlobalEffect(int transition_speed = SLOW_TRANSITION)
-  {
-    updateSegment(UNIFIED_SEGMENT, effects.off, transition_speed);
-  }
-
-  void triggerDoorEffect(int transition = SLOW_TRANSITION)
-  {
-    triggerGlobalEffect(effects.doorOpen, transition);
-    green("++++++ DOOR EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerUnlockEffect()
-  {
-    triggerGlobalEffect(effects.unlock);
-    green("++++++ UNLOCK EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerLockEffect()
-  {
-    triggerGlobalEffect(effects.lock);
-    red("++++++ LOCK EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerIgnitionEffect()
-  {
-    triggerGlobalEffect(effects.ignition);
-    yellow("++++++ IGNITION EFFECT ACTIVATED ++++++");
-  }
   void printGateKeepers()
   {
     // Print all conditional boolean values to serial monitor
@@ -406,6 +379,15 @@ public:
   }
   void loop()
   {
+    /***************************
+    ****************************
+     * 
+     *  LET THE LOOP BEGIN
+     * 
+    ****************************
+    ****************************/
+
+    
     if (!enabled || !ST.checkSegmentIntegrity() || strip.isUpdating())
     {
       // return printGateKeepers();
@@ -695,7 +677,7 @@ public:
         }
         else
         {
-          triggerDoorEffect(INSTANT_TRANSITION);
+          //triggerDoorEffect(INSTANT_TRANSITION);
         }
         green("------ UNLOCK EFFECT DEACTIVATED ------");
         doors_unlocked_previously_set = false;
