@@ -15,11 +15,6 @@ private:
   void updateSegment(int seg, Effect effect = Effect(), int transition_speed = INSTANT_TRANSITION)
   {
     strip.setTransition(transition_speed);
-    if(seg == UNIFIED_SEGMENT){
-      ST.selectAndEnableOnly(UNIFIED_SEGMENT);
-    }else{
-      ST.selectAndEnable(seg);
-    }
     // const bool incomingIsPreset = effects.isPreset(effect);
     const bool isTurningOff = effect.checksum == effects.off.checksum;
 
@@ -145,40 +140,6 @@ public:
   {
     if (!ST.checkSegmentIntegrity() || strip.isUpdating())
       return;
-    static bool left_previously_set = false;
-    static bool door_previously_set = false;
-    static bool right_previously_set = false;
-    static bool brake_previously_set = false;
-    static bool doors_unlocked_previously_set = false;
-    static bool doors_locked_previously_set = false;
-    static bool ignition_previously_set = false;
-
-    static bool brake_pedal_previous_state = false;
-    static bool reverse_previous_state = false;
-    static bool left_indicator_previous_state = false;
-    static bool right_indicator_previous_state = false;
-    static bool door_previous_state = false;
-    static bool doors_unlocked_previous_state = false;
-    static bool doors_locked_previous_state = false;
-    static bool ignition_previous_state = false;
-
-    // Declare the struct for PreviousState
-
-    // static unsigned long brake_effect_expiration_timer = 0;
-    // static unsigned long left_effect_expiration_timer = 0;
-    // static unsigned long right_effect_expiration_timer = 0;
-    // static unsigned long door_effect_expiration_timer = 0;
-    // static unsigned long unlock_effect_expiration_timer = 0;
-    // static unsigned long lock_effect_expiration_timer = 0;
-    // static unsigned long ignition_effect_expiration_timer = 0;
-
-    static unsigned long last_brake_press_time = 0;
-    static unsigned long last_left_on_time = 0;
-    static unsigned long last_right_on_time = 0;
-    static unsigned long last_door_open_time = 0;
-    static unsigned long last_unlock_time = 0;
-    static unsigned long last_lock_time = 0;
-    static unsigned long last_ignition_time = 0;
 
     static unsigned long brake_effect_delay = 0;
     static unsigned long left_effect_delay = 3000;
@@ -197,314 +158,56 @@ public:
      * Print current state of segment
      */
     printDetailsPeriodically();
-    const bool reverse_state_change = reverse_previous_state != ST.car_in_reverse;
-    reverse_previous_state = ST.car_in_reverse;
 
-    const bool brake_state_change = brake_pedal_previous_state != ST.brake_pedal_pressed;
-    brake_pedal_previous_state = ST.brake_pedal_pressed;
 
-    overrides.setBrake(last_brake_press_time && (millis() - last_brake_press_time < brake_effect_delay));
-    if (reverse_state_change || brake_state_change || brake_previously_set)
-    {
-      if (ST.brake_pedal_pressed || ST.car_in_reverse)
-      {
-        if (!brake_previously_set || reverse_state_change)
-        {
-          if (!overrides.checkOthers("brake"))
-          {
-            cache.forBrake.refresh();
-            strip.setTransition(0);
-          }
-          if (ST.car_in_reverse)
-          {
-            updateSegment(BRAKE_SEGMENT, effects.reverse);
-            Serial.println("++++++ REVERSE PRESSED ++++++");
-          }
-          else
-          {
-            updateSegment(BRAKE_SEGMENT, effects.brake);
-            Serial.println("++++++ BRAKE PRESSED ++++++");
-          }
-        }
-        brake_previously_set = true;
-        last_brake_press_time = millis();
-      }
-      else if (!overrides.Brake)
-      {
-        // strip.setTransition(1000);
-        // Don't reset fully if the door is open.
-        if (overrides.Door)
-        {
-          strip.setTransition(0);
-          cache.forDoor.setRear(cache.forBrake.RearSegment);
-          // Enable door mode.
-          updateSegment(BRAKE_SEGMENT, effects.doorOpen);
-        }
-        else
-        {
-          strip.setTransition(0);
-          updateSegment(BRAKE_SEGMENT);
-        }
-        Serial.println("------ BRAKE/REVERSE RELEASED ------");
-        brake_previously_set = false;
-        last_brake_press_time = 0;
-      }
+    /**
+     * BRAKE EFFECT SEQUENCE
+     **********************/
+    if(ST.brakeEngaged()){
+        queueManager.addEffectToQueue(effects.brake, {REAR_SEGMENT}, brake_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
     }
-    else if (!(ST.brake_pedal_pressed || ST.car_in_reverse) && !overrides.Brake)
-    {
+    
+    /**
+     * LEFT EFFECT SEQUENCE
+     **********************/
+    if(ST.leftIndicatorOn()){
+      queueManager.addEffectToQueue(effects.leftTurn, {LEFT_SEGMENT}, left_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
-     * LEFT TURN EFFECT SEQUENCE
-     ****************************/
-
-    const bool left_state_change = left_indicator_previous_state != ST.left_indicator_on;
-    left_indicator_previous_state = ST.left_indicator_on;
-
-    overrides.setLeftIndicator(last_left_on_time && (millis() - last_left_on_time < left_effect_delay));
-
-    if (left_state_change || left_previously_set)
-    {
-      if (ST.left_indicator_on)
-      {
-        if (!left_previously_set)
-        {
-          strip.setTransition(0);
-          if (!overrides.Door)
-          {
-            cache.forLeftTurn.refresh();
-          }
-
-          updateSegment(LEFT_SEGMENT, effects.leftTurn);
-          Serial.println("++++++ LEFT CLICKER ON ++++++");
-        }
-        left_previously_set = true;
-        last_left_on_time = millis();
-      }
-      else if (!overrides.LeftIndicator)
-      {
-        // Don't reset fully if the door is open.
-        strip.setTransition(1000);
-        if (!overrides.Door)
-        {
-          updateSegment(LEFT_SEGMENT);
-        }
-        else
-        {
-          // Pass the clicker cache to door cache
-          // cache.forDoor.setLeft(cache.forLeftTurn.LeftSegment);
-          // Enable door mode.
-          triggerDoorEffect(INSTANT_TRANSITION);
-        }
-        Serial.println("------ LEFT CLICKER OFF ------");
-        last_left_on_time = 0;
-        left_previously_set = false;
-      }
-    }
-    else if (!ST.left_indicator_on && !overrides.LeftIndicator)
-    {
-      // Stop caching state when door is open.
-      if (!ST.door_is_open && !!overrides.Door)
-      {
-        cache.forLeftTurn.setLeft();
-      }
+     * RIGHT EFFECT SEQUENCE
+     **********************/
+    if(ST.rightIndicatorOn()){
+      queueManager.addEffectToQueue(effects.rightTurn, {RIGHT_SEGMENT}, right_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition 
     }
 
     /**
-     * RIGHT CLICKER SEQUENCE
-     ***************************/
-
-    const bool right_state_change = right_indicator_previous_state != ST.right_indicator_on;
-    right_indicator_previous_state = ST.right_indicator_on;
-    overrides.setRightIndicator(last_right_on_time && (millis() - last_right_on_time < right_effect_delay));
-    if (right_state_change || right_previously_set)
-    {
-      if (ST.right_indicator_on)
-      {
-        if (!right_previously_set)
-        {
-          strip.setTransition(0);
-          if (!overrides.Door)
-          {
-            cache.forRightTurn.refresh();
-          }
-          updateSegment(RIGHT_SEGMENT, effects.rightTurn);
-          Serial.println("++++++ RIGHT TURN EFFECT ACTIVATED ++++++");
-        }
-
-        right_previously_set = true;
-        last_right_on_time = millis();
-      }
-      else if (!overrides.RightIndicator)
-      {
-        // Don't reset fully if the door is open.
-        strip.setTransition(1000);
-
-        if (!overrides.Door)
-        {
-          updateSegment(RIGHT_SEGMENT);
-        }
-        else
-        {
-          // Pass the clicker cache to door cache
-          // cache.forDoor.setRight(cache.forRightTurn.RightSegment);
-          // Enable door mode.
-          triggerDoorEffect(INSTANT_TRANSITION);
-        }
-        Serial.println("------ RIGHT TURN EFFECT DEACTIVATED ------");
-
-        right_previously_set = false;
-        last_right_on_time = 0;
-      }
-    }
-    else if (!ST.right_indicator_on && !overrides.RightIndicator)
-    {
-      // Stop caching state when door is open.
-      if (!ST.door_is_open && !overrides.Door)
-      {
-        cache.forRightTurn.setRight();
-      }
+     * DOOR EFFECT SEQUENCE
+     **********************/
+    if(ST.doorOpen()){
+      queueManager.addEffectToQueue(effects.doorOpen, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, door_effect_delay, SLOW_TRANSITION);
     }
 
     /**
-     * DOOR OPEN EFFECT SEQUENCE
-     ***************************/
-
-    const bool door_state_change = door_previous_state != ST.door_is_open;
-    door_previous_state = ST.door_is_open;
-
-    overrides.setDoor(last_door_open_time && (millis() - last_door_open_time < door_effect_delay));
-    if (door_state_change || door_previously_set)
-    {
-      if (ST.door_is_open)
-      {
-        if (!door_previously_set)
-        {
-          triggerDoorEffect();
-        }
-        door_previously_set = true;
-        last_door_open_time = millis();
-      }
-      else if (!overrides.Door)
-      {
-        restoreGlobalEffect();
-        Serial.println("------ DOOR EFFECT DEACTIVATED ------");
-
-        door_previously_set = false;
-        last_door_open_time = 0;
-      }
-    }
-    else if (!ST.door_is_open && !overrides.Door)
-    {
+     * UNLOCK EFFECT SEQUENCE
+     ************************/
+    if(ST.unlocked()){
+      queueManager.addEffectToQueue(effects.unlock, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, unlock_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
-     * DOORS UNLOCKED SEQUENCE
-     ***************************/
-
-    const bool doors_unlocked_state_change = doors_unlocked_previous_state != ST.doors_unlocked;
-    doors_unlocked_previous_state = ST.doors_unlocked;
-    overrides.setDoorsUnlocked(last_unlock_time && (millis() - last_unlock_time < unlock_effect_delay));
-    const bool unlockOverrideExpired = !doors_unlocked_state_change && !overrides.DoorsUnlocked && ST.doors_unlocked;
-    if (doors_unlocked_state_change || doors_unlocked_previously_set)
-    {
-      if (ST.doors_unlocked && !unlockOverrideExpired && !doors_unlocked_previously_set)
-      {
-
-        triggerGlobalEffect(effects.unlock, INSTANT_TRANSITION);
-        Serial.println("++++++ UNLOCK EFFECT ACTIVATED ++++++");
-        doors_unlocked_previously_set = true;
-        last_unlock_time = millis();
-      }
-      else if (!overrides.DoorsUnlocked)
-      {
-        if (!overrides.Door)
-        {
-          restoreGlobalEffect(INSTANT_TRANSITION);
-        }
-        else
-        {
-          triggerDoorEffect(INSTANT_TRANSITION);
-        }
-        Serial.println("------ UNLOCK EFFECT DEACTIVATED ------");
-        doors_unlocked_previously_set = false;
-        last_unlock_time = 0;
-      }
-    }
-    else if (!ST.door_is_open && !overrides.Door)
-    {
-    }
-
-    /**
-     * DOORS LOCKED SEQUENCE
-     ***************************/
-
-    const bool doors_locked_state_change = doors_locked_previous_state != ST.doors_locked;
-    doors_locked_previous_state = ST.doors_locked;
-    overrides.setDoorsLocked(last_lock_time && (millis() - last_lock_time < lock_effect_delay));
-    const bool lockOverrideExpired = !doors_locked_state_change && !overrides.DoorsLocked && ST.doors_locked;
-    if (doors_locked_state_change || doors_locked_previously_set)
-    {
-      if (ST.doors_locked && !lockOverrideExpired && !doors_locked_previously_set)
-      {
-        triggerGlobalEffect(effects.lock, INSTANT_TRANSITION);
-        Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
-        doors_locked_previously_set = true;
-        last_lock_time = millis();
-      }
-      else if (!overrides.DoorsLocked)
-      {
-        if (!overrides.Door)
-        {
-          restoreGlobalEffect(INSTANT_TRANSITION);
-        }
-        else
-        {
-          triggerDoorEffect(INSTANT_TRANSITION);
-        }
-        Serial.println("------ LOCK EFFECT DEACTIVATED ------");
-        doors_locked_previously_set = false;
-        last_lock_time = 0;
-      }
-    }
-    else if (!ST.door_is_open && !overrides.Door)
-    {
-    }
+     * LOCK EFFECT SEQUENCE
+     **********************/
+    if(ST.locked()){
+      queueManager.addEffectToQueue(effects.lock, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, lock_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+    } 
 
     /**
      * IGNITION EFFECT SEQUENCE
      **************************/
-
-    const bool ignition_state_change = ignition_previous_state != ST.ignition;
-    ignition_previous_state = ST.ignition;
-    overrides.setIgnition(last_ignition_time && (millis() - last_ignition_time < ignition_effect_delay));
-    const bool ignitionOverrideExpired = !ignition_state_change && !overrides.Ignition && ST.ignition;
-    if (ignition_state_change || ignition_previously_set)
-    {
-      if (ST.ignition && !ignitionOverrideExpired && !ignition_previously_set)
-      {
-        triggerGlobalEffect(effects.ignition, INSTANT_TRANSITION);
-        Serial.println("++++++ IGNITION EFFECT ACTIVATED ++++++");
-        ignition_previously_set = true;
-        last_ignition_time = millis();
-      }
-      else if (!overrides.Ignition)
-      {
-        if (!overrides.Door)
-        {
-          restoreGlobalEffect(INSTANT_TRANSITION);
-        }
-        else
-        {
-          triggerDoorEffect(INSTANT_TRANSITION);
-        }
-        Serial.println("------ IGNITION EFFECT DEACTIVATED ------");
-        ignition_previously_set = false;
-        last_ignition_time = 0;
-      }
+    if(ST.ignitionOn()){
+      queueManager.addEffectToQueue(effects.ignition, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, ignition_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
     }
-    else if (!ST.door_is_open && !overrides.Door)
-    {
-    }
+    queueManager.processQueue();
   }
 };

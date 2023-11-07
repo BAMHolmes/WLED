@@ -107,6 +107,7 @@ public:
     uint8_t palette;
     bool power;
     uint32_t checksum;
+    unsigned long startTime;
 
     Effect() : mode(FX_MODE_STATIC), speed(255), fade(255), palette(0), power(false), checksum(0)
     {
@@ -135,6 +136,9 @@ public:
           power(segment.getOption(SEG_OPTION_ON))
     {
         checksum = calculateChecksum();
+    }
+    void triggerEffect(int segment){
+        Serial.println(checksum + " effect triggered");
     }
     bool isPreset(const std::array<uint32_t, 9> &presetChecksums) const
     {
@@ -195,8 +199,24 @@ public:
             unlock.checksum,
             lock.checksum,
             off.checksum};
+        
+        printAllChecksums();
     }
-
+    /** Print all effect names and their corresponding checksums */
+    void printAllChecksums() const
+    {
+        Serial.println("*****Checksums for all effects:******");
+        Serial.println("doorOpen: " + String(doorOpen.checksum));
+        Serial.println("leftTurn: " + String(leftTurn.checksum));
+        Serial.println("rightTurn: " + String(rightTurn.checksum));
+        Serial.println("brake: " + String(brake.checksum));
+        Serial.println("reverse: " + String(reverse.checksum));
+        Serial.println("ignition: " + String(ignition.checksum));
+        Serial.println("unlock: " + String(unlock.checksum));
+        Serial.println("lock: " + String(lock.checksum));
+        Serial.println("off: " + String(off.checksum));
+        Serial.println("*************************************");
+    }
     bool isPreset(const Effect *effect) const
     {
         for (const auto &presetChecksum : presetChecksums)
@@ -240,7 +260,7 @@ public:
         case RIGHT_SEGMENT:
             return RightSegment;
             break;
-        case BRAKE_SEGMENT:
+        case REAR_SEGMENT:
             return RearSegment;
             break;
         case FRONT_SEGMENT:
@@ -261,7 +281,7 @@ public:
         case RIGHT_SEGMENT:
             RightSegment = effect;
             break;
-        case BRAKE_SEGMENT:
+        case REAR_SEGMENT:
             RearSegment = effect;
             break;
         case FRONT_SEGMENT:
@@ -355,7 +375,7 @@ public:
     }
     bool setRear()
     {
-        if (!isSegmentInitialized(BRAKE_SEGMENT))
+        if (!isSegmentInitialized(REAR_SEGMENT))
         {
             return false;
         }
@@ -407,3 +427,85 @@ public:
 
     EffectCacheCollection() : forDoor(), forBrake(), forLeftTurn(), forRightTurn(), forUnlock(), forReverse(), forLock(), forIgnition(), generic() {}
 };
+
+
+class QueueItem {
+public:
+    Effect effect; // The Effect to be run
+    std::vector<int> segments; // Pointers to Segment objects
+    unsigned long runTime; // Duration the Effect should run
+    unsigned long transition; // Transition time for the Effect
+
+    QueueItem(Effect effect, std::vector<int> segments, unsigned long runTime, unsigned long transition)
+    : effect(effect), segments(segments), runTime(runTime), transition(transition) {
+        // Constructor implementation
+        effect.startTime = millis(); // Set the effect start time
+    }
+
+    bool isExpired() const {
+        return millis() - effect.startTime >= runTime;
+    }
+
+    // Other QueueItem methods as necessary
+};
+
+class QueueManager {
+private:
+    std::vector<QueueItem> queue;
+    std::map<int, QueueItem*> activeEffects;
+    bool updateRuntimeIfEffectExists(const Effect& effect, unsigned long additionalRuntime) {
+        for (auto& active : activeEffects) {
+            if (active.second->effect.checksum == effect.checksum) {
+                // Increase the runtime of the existing effect
+                active.second->runTime += additionalRuntime;
+                return true;
+            }
+        }
+        return false;
+    }
+    void updateQueue() {
+        unsigned long currentTime = millis();
+        // Remove expired effects from the active effects list
+        for (auto it = activeEffects.begin(); it != activeEffects.end();) {
+            if (currentTime - it->second->effect.startTime >= it->second->runTime) {
+                it = activeEffects.erase(it); // Effect duration has ended, remove it
+            } else {
+                ++it;
+            }
+        }
+        // Add new effects to the active list, overriding any existing ones on the same segments
+        for (QueueItem& item : queue) {
+            for (int segmentID : item.segments) {
+                activeEffects[segmentID] = &item; // Map segment ID to the QueueItem
+            }
+        }
+    }
+
+public:
+    void addEffectToQueue(const Effect& effect, const std::vector<int>& segmentIDs, unsigned long runTime, unsigned long transition) {
+        // Attempt to update runtime of an existing effect with the same checksum
+        if (updateRuntimeIfEffectExists(effect, runTime)) {
+            return; // Existing effect's runtime was updated, no need to add a new one
+        }
+
+        QueueItem item(effect, segmentIDs, runTime, transition);
+
+        // Add the new effect to the queue if no existing effect with the same checksum was found
+        queue.push_back(item);
+    }
+
+    void processQueue() {
+        updateQueue(); // Refresh the active effects based on the queue
+
+        // Trigger effects on each segment by ID
+        for (const auto& pair : activeEffects) {
+            pair.second->effect.triggerEffect(pair.first); // Trigger the effect on the segment ID
+        }
+
+        // Clear the queue after processing
+        queue.clear();
+    }
+
+    // Other QueueManager methods as necessary
+};
+QueueManager queueManager;
