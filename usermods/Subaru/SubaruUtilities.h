@@ -4,6 +4,9 @@
 #include <array>
 #include <unordered_map>
 #include <map>
+#include <deque>
+#include <vector>
+
 /**
  * A Class with methods for printing colored text to Serial monitor.
  * It accepts a String and a color code for the foreground and background color of the text .
@@ -185,7 +188,23 @@ public:
         colors[1] = 0x000000;
         colors[2] = 0x000000;
     }
-
+    /** Construct an effect from a Segment id. Use ST to fetch the segment by ID */
+    Effect(int seg){
+        Segment& segment = SubaruTelemetry::seg(seg);
+        segmentIDs.push_back(seg);
+        mode = segment.mode;
+        speed = segment.speed;
+        fade = 255;
+        power = segment.getOption(SEG_OPTION_ON);
+        startTime = 0;
+        isRunning = false;
+        runTime = 0;
+        palette = segment.palette;
+        checksum = calculateChecksum();
+        colors[0] = segment.colors[0];
+        colors[1] = segment.colors[1];
+        colors[2] = segment.colors[2];
+    }
     void start()
     {
         if (!isRunning)
@@ -255,9 +274,8 @@ private:
     uint32_t calculateChecksum() const
     {
         uint32_t checksum = mode;
-        checksum += colors[0] + colors[1] + colors[2];
+        checksum += colors[0];
         checksum += speed;
-        checksum += fade;
         checksum += palette;
         checksum += static_cast<uint32_t>(power);
         return checksum;
@@ -352,90 +370,127 @@ public:
     // Other QueueItem methods as necessary
 };
 
-class QueueManager
-{
+// QueueManager class
+class QueueManager {
 private:
-    std::vector<Effect> effectsQueue;
-    std::map<int, Effect *> activeEffectsPerSegment;
+    std::map<int, std::deque<Effect>> effectsPerSegment;
+    std::map<int, Effect*> activeEffectsPerSegment;
+    EffectCollection effectCollection; // Assuming this exists and is initialized correctly
 
+    // Check if the effect is a predefined one
+    bool isPresetEffect(const Effect& effect) const {
+        return effectCollection.isPreset(&effect);
+    }
+    void enqueueEffect(Effect effect) {
+        // Enqueue the effect in its respective segment queue
+        for (int segmentID : effect.segmentIDs) {
+            auto& queue = effectsPerSegment[segmentID];
+            queue.push_back(std::move(effect));
+        }
+    }
 public:
-    void addEffectToQueue(Effect effect)
-    {
+    void checkSegmentsAndUpdate() {
+        // Check each segment and if a custom effect is found that is not in the queue, enqueue it
+        for (int segmentID : DEFAULT_SEGMENT_IDS) {
+            Effect currentEffectOnSegment(segmentID);
+            if (!isPresetEffect(currentEffectOnSegment)) {
+                // Check if this custom effect is already in the queue
+                auto& queue = effectsPerSegment[segmentID];
+                if (std::none_of(queue.begin(), queue.end(), [&currentEffectOnSegment](const Effect& effect) {
+                        return effect.checksum == currentEffectOnSegment.checksum;
+                    })) {
+                    // If not, enqueue it as the default state
+                    enqueueEffect(std::move(currentEffectOnSegment));
+                }
+            }
+        }
+    }
+    void addEffectToQueue(Effect effect) {
         unsigned long currentTime = millis();
         effect.startTime = currentTime; // Set the start time to now
 
-        // Check for an existing effect with the same checksum to extend its runtime
-        for (auto &queuedEffect : effectsQueue)
-        {
-            if (queuedEffect.checksum == effect.checksum)
-            {
-                // Increase the remaining runtime of the effect already in the queue
-                queuedEffect.remainingRuntime += effect.runTime;
-                Serial.println("Extended runtime of effect " + String(effect.checksum));
-                return;
+        if (!isPresetEffect(effect)) {
+            // This is a custom effect with infinite run time, enqueue it directly
+            enqueueEffect(std::move(effect));
+        } else {
+            // This is a preset effect, add it to the front of the queues for its segments
+            for (int segmentID : effect.segmentIDs) {
+                auto& queue = effectsPerSegment[segmentID];
+                queue.push_front(std::move(effect));
             }
         }
+    }
+    void addEffectToQueueOld(Effect effect) {
+        unsigned long currentTime = millis();
+        effect.startTime = currentTime; // Set the start time to now
 
-        // Add the new effect to the queue
-        effectsQueue.push_back(effect);
-        Serial.println("Added new effect " + String(effect.checksum) + " to queue with runtime " + String(effect.runTime));
+        for (int segmentID : effect.segmentIDs) {
+            bool isPreset = isPresetEffect(effect);
+            auto& segmentQueue = effectsPerSegment[segmentID];
 
-        // Update the currently active effect for each affected segment
-        for (int segmentID : effect.segmentIDs)
-        {
-            // If there's already an effect running on this segment, just mark it for update
-            // without altering its run time; it will be updated in processQueue
-            if (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end())
-            {
-                Serial.println("Effect " + String(effect.checksum) + " will override segment " + String(segmentID) + " after current effect completes.");
+            // If it's a custom effect (runTime is 0), place it at the end as a default state
+            if (isPreset) {
+                // Replace or add the custom effect at the end of the queue
+                if (!segmentQueue.empty() && !isPresetEffect(segmentQueue.back())) {
+                    segmentQueue.back() = effect;
+                } else {
+                    segmentQueue.push_back(effect);
+                }
+            } else {
+                // It's a preset effect, add to the front of the queue
+                segmentQueue.push_front(effect);
             }
-            // Set this effect as the next to be displayed on the segment
-            activeEffectsPerSegment[segmentID] = &effect;
         }
     }
 
-    void processQueue()
-    {
+    void processQueue() {
+        checkSegmentsAndUpdate();
         unsigned long currentTime = millis();
 
-        // Iterate over the queue and update the state of each effect
-        for (Effect &effect : effectsQueue)
-        {
-            if (currentTime - effect.startTime < effect.remainingRuntime)
-            {
-                // The effect is within its run time
-                for (int segmentID : effect.segmentIDs)
-                {
-                    Effect *currentEffect = activeEffectsPerSegment[segmentID];
-                    // If this effect is the most recent for the segment, start or continue it
-                    if (&effect == currentEffect && !effect.isRunning)
-                    {
-                        effect.start();
-                    }
-                }
+        // Iterate over each segment's queue
+        for (auto& pair : effectsPerSegment) {
+            int segmentID = pair.first;
+            std::deque<Effect>& segmentQueue = pair.second;
+
+            if (segmentQueue.empty()) continue;
+
+            // Process the first effect in the queue if it's not already running
+            Effect* currentEffect = &segmentQueue.front();
+            if (!currentEffect->isRunning && (currentEffect->runTime == 0 || currentTime - currentEffect->startTime < currentEffect->runTime)) {
+                currentEffect->start();
+                activeEffectsPerSegment[segmentID] = currentEffect;
             }
-            else
-            {
-                // The effect has exceeded its run time, stop if it's running
-                if (effect.isRunning)
-                {
-                    effect.stop();
+
+            // Move to the next effect if the current one has finished, unless it's a custom effect with infinite run time
+            if (currentEffect->isRunning && currentEffect->runTime > 0 && currentTime - currentEffect->startTime >= currentEffect->runTime) {
+                currentEffect->stop();
+                segmentQueue.pop_front();
+                // Check if the segmentQueue is empty - if so, trigger an "effects.off" effect on all segments
+                if (segmentQueue.empty()) {
+                    Effect offEffect = effectCollection.off;
+                    offEffect.start();
                 }
+                activeEffectsPerSegment.erase(segmentID);
             }
         }
 
-        // Clean up the queue, removing effects that have finished running
-        effectsQueue.erase(
-            std::remove_if(
-                effectsQueue.begin(),
-                effectsQueue.end(),
-                [currentTime](const Effect &effect)
-                {
-                    return currentTime - effect.startTime >= effect.remainingRuntime;
-                }),
-            effectsQueue.end());
+        // Clean up the queue by removing expired effects, except for the custom effect which should stay
+        for (auto& pair : effectsPerSegment) {
+            //int segmentID = pair.first;
+            std::deque<Effect>& segmentQueue = pair.second;
+
+            while (!segmentQueue.empty()) {
+                Effect& effect = segmentQueue.front();
+                if (effect.runTime > 0 && currentTime - effect.startTime >= effect.runTime) {
+                    segmentQueue.pop_front();
+                } else {
+                    break;
+                }
+            }
+        }
     }
 };
+
 // emplace_back <- crazy method.
 
 QueueManager queueManager;
