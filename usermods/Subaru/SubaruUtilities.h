@@ -8,7 +8,7 @@
  * A Class with methods for printing colored text to Serial monitor.
  * It accepts a String and a color code for the foreground and background color of the text .
  * The color codes should be enums like FG_RED, BG_GREEN for forground red and background green respectfully
-*/
+ */
 class ColorPrint
 {
 public:
@@ -200,7 +200,6 @@ public:
         // Code to stop the effect if necessary
         isRunning = false;
         p.println("Stopping effect " + String(checksum) + " on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
-
     }
     void triggerEffect()
     {
@@ -353,99 +352,91 @@ public:
     // Other QueueItem methods as necessary
 };
 
-class QueueManager {
+class QueueManager
+{
 private:
     std::vector<Effect> effectsQueue;
-    std::map<int, Effect*> activeEffectsPerSegment;
+    std::map<int, Effect *> activeEffectsPerSegment;
 
 public:
-    void addEffectToQueue(Effect effect) {
+    void addEffectToQueue(Effect effect)
+    {
         unsigned long currentTime = millis();
         effect.startTime = currentTime; // Set the start time to now
-        effect.remainingRuntime = effect.runTime; // Initialize remainingRuntime
 
-        // Iterate through all segments that the effect applies to
-        for (int segmentID : effect.segmentIDs) {
-            // If there is already an effect running on this segment
-            if (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end()) {
-                // If the new effect has the same checksum, we increase the remaining runtime instead
-                if (activeEffectsPerSegment[segmentID]->checksum == effect.checksum) {
-                    activeEffectsPerSegment[segmentID]->remainingRuntime += effect.runTime;
-                    Serial.println("Extended runtime of effect " + String(effect.checksum) + " on segment " + String(segmentID));
-                } else {
-                    // If it's a different effect, we store the remaining runtime and override it
-                    Effect* currentEffect = activeEffectsPerSegment[segmentID];
-                    currentEffect->remainingRuntime = std::max(currentEffect->remainingRuntime - (currentTime - currentEffect->startTime), 0ul);
-                    activeEffectsPerSegment[segmentID] = &effect;
-                    Serial.println("Overriding effect on segment " + String(segmentID) + " with new effect " + String(effect.checksum));
-                }
-            } else {
-                // If no effect is running on this segment, simply add the effect
-                activeEffectsPerSegment[segmentID] = &effect;
+        // Check for an existing effect with the same checksum to extend its runtime
+        for (auto &queuedEffect : effectsQueue)
+        {
+            if (queuedEffect.checksum == effect.checksum)
+            {
+                // Increase the remaining runtime of the effect already in the queue
+                queuedEffect.remainingRuntime += effect.runTime;
+                Serial.println("Extended runtime of effect " + String(effect.checksum));
+                return;
             }
         }
 
         // Add the new effect to the queue
         effectsQueue.push_back(effect);
         Serial.println("Added new effect " + String(effect.checksum) + " to queue with runtime " + String(effect.runTime));
+
+        // Update the currently active effect for each affected segment
+        for (int segmentID : effect.segmentIDs)
+        {
+            // If there's already an effect running on this segment, just mark it for update
+            // without altering its run time; it will be updated in processQueue
+            if (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end())
+            {
+                Serial.println("Effect " + String(effect.checksum) + " will override segment " + String(segmentID) + " after current effect completes.");
+            }
+            // Set this effect as the next to be displayed on the segment
+            activeEffectsPerSegment[segmentID] = &effect;
+        }
     }
 
-    void processQueue() {
+    void processQueue()
+    {
         unsigned long currentTime = millis();
 
-        // Iterate over active effects and trigger them if they are not already running
-        for (auto& pair : activeEffectsPerSegment) {
-            int segmentID = pair.first;
-            Effect* effect = pair.second;
-
-            if (!effect->isRunning && currentTime - effect->startTime < effect->runTime) {
-                effect->start(); // This sets isRunning to true and triggers the effect
-            }
-        }
-
-        // Iterate over effectsQueue and update their states
-        for (Effect& effect : effectsQueue) {
-            // If the effect's runtime has expired
-            if (currentTime - effect.startTime >= effect.runTime) {
-                // If the effect is currently running, stop it
-                if (effect.isRunning) {
-                    effect.stop();
-                }
-                // Check if any previously overridden effect needs to resume
-                for (int segmentID : effect.segmentIDs) {
-                    if (activeEffectsPerSegment[segmentID] == &effect) {
-                        // If this was the active effect, check if there is a remaining effect to resume
-                        auto it = std::find_if(effectsQueue.begin(), effectsQueue.end(), [&segmentID](const Effect& otherEffect) {
-                            return otherEffect.remainingRuntime > 0 && std::find(otherEffect.segmentIDs.begin(), otherEffect.segmentIDs.end(), segmentID) != otherEffect.segmentIDs.end();
-                        });
-                        if (it != effectsQueue.end()) {
-                            // Resume the previous effect
-                            activeEffectsPerSegment[segmentID] = &(*it);
-                            it->startTime = currentTime;
-                            it->start();
-                        } else {
-                            // No previous effect to resume, clear the active effect for this segment
-                            activeEffectsPerSegment.erase(segmentID);
-                        }
+        // Iterate over the queue and update the state of each effect
+        for (Effect &effect : effectsQueue)
+        {
+            if (currentTime - effect.startTime < effect.remainingRuntime)
+            {
+                // The effect is within its run time
+                for (int segmentID : effect.segmentIDs)
+                {
+                    Effect *currentEffect = activeEffectsPerSegment[segmentID];
+                    // If this effect is the most recent for the segment, start or continue it
+                    if (&effect == currentEffect && !effect.isRunning)
+                    {
+                        effect.start();
                     }
                 }
             }
+            else
+            {
+                // The effect has exceeded its run time, stop if it's running
+                if (effect.isRunning)
+                {
+                    effect.stop();
+                }
+            }
         }
 
-        // Remove expired effects from the queue
+        // Clean up the queue, removing effects that have finished running
         effectsQueue.erase(
             std::remove_if(
                 effectsQueue.begin(),
                 effectsQueue.end(),
-                [currentTime](const Effect& effect) {
-                    return currentTime - effect.startTime >= effect.runTime && !effect.isRunning;
-                }
-            ),
-            effectsQueue.end()
-        );
+                [currentTime](const Effect &effect)
+                {
+                    return currentTime - effect.startTime >= effect.remainingRuntime;
+                }),
+            effectsQueue.end());
     }
 };
-//emplace_back <- crazy method.
+// emplace_back <- crazy method.
 
 QueueManager queueManager;
 
