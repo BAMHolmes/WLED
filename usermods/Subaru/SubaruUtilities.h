@@ -4,7 +4,44 @@
 #include <array>
 #include <unordered_map>
 #include <map>
+/**
+ * A Class with methods for printing colored text to Serial monitor.
+ * It accepts a String and a color code for the foreground and background color of the text .
+ * The color codes should be enums like FG_RED, BG_GREEN for forground red and background green respectfully
+*/
+class ColorPrint
+{
+public:
+    enum Color
+    {
+        FG_BLACK = 30,
+        FG_RED = 31,
+        FG_GREEN = 32,
+        FG_YELLOW = 33,
+        FG_BLUE = 34,
+        FG_MAGENTA = 35,
+        FG_CYAN = 36,
+        FG_WHITE = 37,
+        BG_BLACK = 40,
+        BG_RED = 41,
+        BG_GREEN = 42,
+        BG_YELLOW = 43,
+        BG_BLUE = 44,
+        BG_MAGENTA = 45,
+        BG_CYAN = 46,
+        BG_WHITE = 47
+    };
 
+    static void print(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
+    {
+        Serial.print("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
+    }
+    static void println(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
+    {
+        Serial.println("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
+    }
+};
+ColorPrint p;
 class Overrides
 {
 public:
@@ -97,48 +134,111 @@ public:
     bool RightIndicator;
     bool Ignition;
 };
+std::vector<int> DEFAULT_SEGMENT_IDS = {FRONT_SEGMENT, LEFT_SEGMENT, RIGHT_SEGMENT, REAR_SEGMENT};
+
 class Effect
 {
 public:
+    std::vector<int> segmentIDs;
     uint8_t mode;
     uint32_t colors[3];
     uint8_t speed;
     uint8_t fade;
-    uint8_t palette;
     bool power;
-    uint32_t checksum;
     unsigned long startTime;
+    bool isRunning;
+    unsigned long runTime;
+    unsigned long remainingRuntime;
+    uint8_t palette;
+    uint32_t checksum;
 
-    Effect() : mode(FX_MODE_STATIC), speed(255), fade(255), palette(0), power(false), checksum(0)
-    {
-        // You can set default values here
-        std::fill(std::begin(colors), std::end(colors), 0x000000);
-        checksum = calculateChecksum();
-    }
-
-    Effect(uint8_t m, uint32_t c1, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
-        : mode(m), colors{c1, 0x000000, 0x000000}, speed(s), fade(f), palette(p), power(pw)
-    {
-        checksum = calculateChecksum();
-    }
-
-    Effect(uint8_t m, uint32_t c1, uint32_t c2, uint32_t c3, uint8_t s, uint8_t f, uint8_t p, bool pw = true)
-        : mode(m), colors{c1, c2, c3}, speed(s), fade(f), palette(p), power(pw)
-    {
-        checksum = calculateChecksum();
-    }
-    Effect(const Segment &segment)
-        : mode(segment.mode),
-          colors{segment.colors[0], segment.colors[1], segment.colors[2]}, // Assuming default colors for color2 and color3
-          speed(segment.speed),
+    Effect()
+        : segmentIDs(DEFAULT_SEGMENT_IDS),
+          mode(FX_MODE_STATIC),
+          speed(255),
           fade(255),
-          palette(segment.palette),
-          power(segment.getOption(SEG_OPTION_ON))
+          power(false),
+          startTime(0),
+          isRunning(false),
+          runTime(0),
+          remainingRuntime(0),
+          palette(0),
+          checksum(calculateChecksum()) // Ensure checksum is calculated last
     {
-        checksum = calculateChecksum();
+        std::fill(std::begin(colors), std::end(colors), 0x000000);
     }
-    void triggerEffect(int segment){
-        Serial.println(checksum + " effect triggered");
+
+    Effect(std::vector<int> seg, uint8_t m, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, bool pw = true)
+        : segmentIDs(seg),
+          mode(m),
+          speed(s),
+          fade(f),
+          power(pw),
+          startTime(0),
+          isRunning(false),
+          runTime(r),
+          palette(p),
+          checksum(calculateChecksum()) // Ensure checksum is calculated last
+    {
+        remainingRuntime = runTime;
+        colors[0] = c1;
+        colors[1] = 0x000000;
+        colors[2] = 0x000000;
+    }
+
+    void start()
+    {
+        if (!isRunning)
+        {
+            triggerEffect(); // Actual function to start the effect
+            isRunning = true;
+        }
+    }
+
+    void stop()
+    {
+        // Code to stop the effect if necessary
+        isRunning = false;
+        p.println("Stopping effect " + String(checksum) + " on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+
+    }
+    void triggerEffect()
+    {
+        // Iterate through all segmentIDs and print on a single line
+        p.print("Triggering effect " + String(checksum) + " on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        for (const auto &segmentID : segmentIDs)
+        {
+            p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        }
+        p.println("...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        /**
+         *     int mode = effect.mode;
+    uint32_t color1 = effect.colors[0];
+    uint32_t color2 = effect.colors[1];
+    uint32_t color3 = effect.colors[2];
+    int speed = effect.speed;
+    uint8_t fade = effect.fade;
+    uint8_t palette = effect.palette;
+    bool on = effect.power;
+    if (!on)
+    {
+      color1 = 0x000000;
+      color2 = 0x000000;
+      color3 = 0x000000;
+    }
+
+    ST.seg(seg).setOption(SEG_OPTION_ON, on);
+    ST.seg(seg).fade_out(fade);
+    ST.seg(seg).setColor(0, color1);
+    ST.seg(seg).setColor(1, color2);
+    ST.seg(seg).setColor(2, color3);
+    ST.seg(seg).setPalette(palette);
+    ST.seg(seg).speed = speed;
+
+    strip.setMode(seg, mode);
+    strip.setBrightness(255, true);
+    strip.trigger();
+        */
     }
     bool isPreset(const std::array<uint32_t, 9> &presetChecksums) const
     {
@@ -177,17 +277,18 @@ public:
     Effect unlock;
     Effect lock;
     Effect off;
-    std::array<uint32_t, 9> presetChecksums;
 
-    EffectCollection() : doorOpen(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
-                         leftTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 0)),
-                         rightTurn(Effect(FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 0)),
-                         brake(Effect(FX_MODE_STATIC, 0xFF0000, 255, 255, 0)),
-                         reverse(Effect(FX_MODE_STATIC, 0xFFC68C, 255, 255, 0)),
-                         ignition(Effect(FX_MODE_LOADING, 0xFFC68C, 0x000000, 0x000000, 225, 255, 0)),
-                         unlock(Effect(FX_MODE_BLINK, 0xFFAA00, 200, 255, 0)),
-                         lock(Effect(FX_MODE_BLINK, 0xFF0000, 200, 255, 0)),
-                         off(Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0))
+    std::array<uint32_t, 9> presetChecksums;
+    // segmentIDs, mode, colors{c1, 0x000000, 0x000000}, speed, fade, runTime, palette, power=on
+    EffectCollection() : doorOpen(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0xFFC68C, 255, 255, 10000, 0)),
+                         leftTurn(Effect({LEFT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 3000, 0)),
+                         rightTurn(Effect({RIGHT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 3000, 0)),
+                         brake(Effect({REAR_SEGMENT}, FX_MODE_STATIC, 0xFF0000, 255, 255, 0, 0)),
+                         reverse(Effect({REAR_SEGMENT}, FX_MODE_STATIC, 0xFFC68C, 255, 255, 0, 0)),
+                         ignition(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_LOADING, 0xFFC68C, 225, 255, 3000, 0)),
+                         unlock(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFFAA00, 200, 255, 3000, 0)),
+                         lock(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFF0000, 200, 255, 3000, 0)),
+                         off(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0x000000, 255, 255, 0, 0))
     {
         presetChecksums = {
             doorOpen.checksum,
@@ -199,7 +300,7 @@ public:
             unlock.checksum,
             lock.checksum,
             off.checksum};
-        
+
         printAllChecksums();
     }
     /** Print all effect names and their corresponding checksums */
@@ -230,220 +331,23 @@ public:
     }
 };
 
-class EffectCache
-{
-private:
-    std::map<int, std::unordered_map<uint32_t, Effect>> segmentEffectMap;
-
-public:
-    Effect LeftSegment;
-    Effect RightSegment;
-    Effect RearSegment;
-    Effect FrontSegment;
-    Effect Default = Effect(FX_MODE_STATIC, 0x000000, 255, 255, 0);
-    SubaruTelemetry ST = SubaruTelemetry();
-
-    EffectCache() : LeftSegment(Default),
-                    RightSegment(Default),
-                    RearSegment(Default),
-                    FrontSegment(Default)
-    {
-        refresh();
-    }
-    Effect getBySegment(int segId)
-    {
-        switch (segId)
-        {
-        case LEFT_SEGMENT:
-            return LeftSegment;
-            break;
-        case RIGHT_SEGMENT:
-            return RightSegment;
-            break;
-        case REAR_SEGMENT:
-            return RearSegment;
-            break;
-        case FRONT_SEGMENT:
-            return FrontSegment;
-            break;
-        default:
-            return Default;
-            break;
-        }
-    }
-    Effect setBySegment(int segId, Effect effect)
-    {
-        switch (segId)
-        {
-        case LEFT_SEGMENT:
-            LeftSegment = effect;
-            break;
-        case RIGHT_SEGMENT:
-            RightSegment = effect;
-            break;
-        case REAR_SEGMENT:
-            RearSegment = effect;
-            break;
-        case FRONT_SEGMENT:
-            FrontSegment = effect;
-            break;
-        default:
-            return Default;
-            break;
-        }
-    }
-
-    void setBySegmentAndChecksum(int segId, uint32_t checksum, const Effect &effect)
-    {
-        segmentEffectMap[segId][checksum] = effect;
-    }
-    // Overload setBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
-    void setBySegmentAndChecksum(int segId, const Effect &incomingEffect, const Effect &outgoingEffect)
-    {
-        setBySegmentAndChecksum(segId, incomingEffect.checksum, outgoingEffect);
-    }
-
-    const Effect *getBySegmentAndChecksum(int segId, uint32_t checksum) const
-    {
-        const auto segmentIt = segmentEffectMap.find(segId);
-        if (segmentIt != segmentEffectMap.end())
-        {
-            const auto &effectMap = segmentIt->second;
-            const auto effectIt = effectMap.find(checksum);
-            if (effectIt != effectMap.end())
-            {
-                return &effectIt->second;
-            }
-        }
-        return nullptr; // Return nullptr if no Effect is found
-    }
-    // Overload getBySegmentAndChecksum to accept segId and effect, then extract checksum from effect
-    const Effect *getBySegmentAndChecksum(int segId, const Effect &effect) const
-    {
-        return getBySegmentAndChecksum(segId, effect.checksum);
-    }
-
-    bool isSegmentInitialized(int seg = LEFT_SEGMENT)
-    {
-        const auto &segments = strip.getSegments();
-        if (segments == nullptr)
-        {
-            Serial.println("Error: Program running too early. Segments array is not initialized");
-            return false;
-        }
-        const Segment &leftSeg = segments[seg];
-
-        // Additional checks can be added here depending on the properties of Segment
-        // For example, checking if colors array is valid
-        if (leftSeg.colors == nullptr)
-        {
-            Serial.println("Error: Program running too early. Segment colors are not initialized");
-            return false;
-        }
-        return true;
-    }
-    bool setLeft()
-    {
-        if (!isSegmentInitialized(LEFT_SEGMENT))
-        {
-            return false;
-        }
-        auto &left = ST.leftSegment();
-        LeftSegment = Effect(left.mode, left.colors[0], left.colors[1], left.colors[2], left.speed, left.palette, left.getOption(SEG_OPTION_ON));
-        return true;
-    }
-
-    bool setLeft(Effect leftSeg)
-    {
-        LeftSegment = leftSeg;
-        return true;
-    }
-    bool setRight()
-    {
-        if (!isSegmentInitialized(RIGHT_SEGMENT))
-        {
-            return false;
-        }
-        auto &right = ST.rightSegment();
-        RightSegment = Effect(right.mode, right.colors[0], right.colors[1], right.colors[2], right.speed, right.palette, right.getOption(SEG_OPTION_ON));
-        return true;
-    }
-    bool setRight(Effect rearSeg)
-    {
-        RightSegment = rearSeg;
-        return true;
-    }
-    bool setRear()
-    {
-        if (!isSegmentInitialized(REAR_SEGMENT))
-        {
-            return false;
-        }
-        auto &rear = ST.rearSegment();
-        RearSegment = Effect(rear.mode, rear.colors[0], rear.colors[1], rear.colors[2], rear.speed, rear.palette, rear.getOption(SEG_OPTION_ON));
-        return true;
-    }
-    bool setRear(Effect rearSeg)
-    {
-        RearSegment = rearSeg;
-        return true;
-    }
-    bool setFront()
-    {
-        if (!isSegmentInitialized(FRONT_SEGMENT))
-        {
-            return false;
-        }
-        auto &front = ST.frontSegment();
-        FrontSegment = Effect(front.mode, front.colors[0], front.colors[1], front.colors[2], front.speed, front.palette, front.getOption(SEG_OPTION_ON));
-        return true;
-    }
-    bool setFront(Effect frontSeg)
-    {
-        FrontSegment = frontSeg;
-        return true;
-    }
-    void refresh()
-    {
-        setLeft();
-        setRight();
-        setRear();
-        setFront();
-    }
-};
-
-class EffectCacheCollection
+class QueueItem
 {
 public:
-    EffectCache forDoor;
-    EffectCache forBrake;
-    EffectCache forLeftTurn;
-    EffectCache forRightTurn;
-    EffectCache forUnlock;
-    EffectCache forReverse;
-    EffectCache forLock;
-    EffectCache forIgnition;
-    EffectCache generic;
-
-    EffectCacheCollection() : forDoor(), forBrake(), forLeftTurn(), forRightTurn(), forUnlock(), forReverse(), forLock(), forIgnition(), generic() {}
-};
-
-
-class QueueItem {
-public:
-    Effect effect; // The Effect to be run
-    std::vector<int> segments; // Pointers to Segment objects
-    unsigned long runTime; // Duration the Effect should run
+    Effect effect;            // The Effect to be run
+    unsigned long runTime;    // Duration the Effect should run
     unsigned long transition; // Transition time for the Effect
 
-    QueueItem(Effect effect, std::vector<int> segments, unsigned long runTime, unsigned long transition)
-    : effect(effect), segments(segments), runTime(runTime), transition(transition) {
-        // Constructor implementation
-        effect.startTime = millis(); // Set the effect start time
+    // The constructor now only needs to take runTime and transition, since Effect contains segmentIDs
+    QueueItem(Effect effect, unsigned long transition)
+        : effect(effect), transition(transition)
+    {
+        // Start time is set when the effect is triggered, not here in the constructor
     }
 
-    bool isExpired() const {
-        return millis() - effect.startTime >= runTime;
+    bool isExpired(unsigned long currentTime) const
+    {
+        return currentTime - effect.startTime >= effect.runTime;
     }
 
     // Other QueueItem methods as necessary
@@ -451,61 +355,110 @@ public:
 
 class QueueManager {
 private:
-    std::vector<QueueItem> queue;
-    std::map<int, QueueItem*> activeEffects;
-    bool updateRuntimeIfEffectExists(const Effect& effect, unsigned long additionalRuntime) {
-        for (auto& active : activeEffects) {
-            if (active.second->effect.checksum == effect.checksum) {
-                // Increase the runtime of the existing effect
-                active.second->runTime += additionalRuntime;
-                return true;
-            }
-        }
-        return false;
-    }
-    void updateQueue() {
-        unsigned long currentTime = millis();
-        // Remove expired effects from the active effects list
-        for (auto it = activeEffects.begin(); it != activeEffects.end();) {
-            if (currentTime - it->second->effect.startTime >= it->second->runTime) {
-                it = activeEffects.erase(it); // Effect duration has ended, remove it
-            } else {
-                ++it;
-            }
-        }
-        // Add new effects to the active list, overriding any existing ones on the same segments
-        for (QueueItem& item : queue) {
-            for (int segmentID : item.segments) {
-                activeEffects[segmentID] = &item; // Map segment ID to the QueueItem
-            }
-        }
-    }
+    std::vector<Effect> effectsQueue;
+    std::map<int, Effect*> activeEffectsPerSegment;
 
 public:
-    void addEffectToQueue(const Effect& effect, const std::vector<int>& segmentIDs, unsigned long runTime, unsigned long transition) {
-        // Attempt to update runtime of an existing effect with the same checksum
-        if (updateRuntimeIfEffectExists(effect, runTime)) {
-            return; // Existing effect's runtime was updated, no need to add a new one
+    void addEffectToQueue(Effect effect) {
+        unsigned long currentTime = millis();
+        effect.startTime = currentTime; // Set the start time to now
+        effect.remainingRuntime = effect.runTime; // Initialize remainingRuntime
+
+        // Iterate through all segments that the effect applies to
+        for (int segmentID : effect.segmentIDs) {
+            // If there is already an effect running on this segment
+            if (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end()) {
+                // If the new effect has the same checksum, we increase the remaining runtime instead
+                if (activeEffectsPerSegment[segmentID]->checksum == effect.checksum) {
+                    activeEffectsPerSegment[segmentID]->remainingRuntime += effect.runTime;
+                    Serial.println("Extended runtime of effect " + String(effect.checksum) + " on segment " + String(segmentID));
+                } else {
+                    // If it's a different effect, we store the remaining runtime and override it
+                    Effect* currentEffect = activeEffectsPerSegment[segmentID];
+                    currentEffect->remainingRuntime = std::max(currentEffect->remainingRuntime - (currentTime - currentEffect->startTime), 0ul);
+                    activeEffectsPerSegment[segmentID] = &effect;
+                    Serial.println("Overriding effect on segment " + String(segmentID) + " with new effect " + String(effect.checksum));
+                }
+            } else {
+                // If no effect is running on this segment, simply add the effect
+                activeEffectsPerSegment[segmentID] = &effect;
+            }
         }
 
-        QueueItem item(effect, segmentIDs, runTime, transition);
-
-        // Add the new effect to the queue if no existing effect with the same checksum was found
-        queue.push_back(item);
+        // Add the new effect to the queue
+        effectsQueue.push_back(effect);
+        Serial.println("Added new effect " + String(effect.checksum) + " to queue with runtime " + String(effect.runTime));
     }
 
     void processQueue() {
-        updateQueue(); // Refresh the active effects based on the queue
+        unsigned long currentTime = millis();
 
-        // Trigger effects on each segment by ID
-        for (const auto& pair : activeEffects) {
-            pair.second->effect.triggerEffect(pair.first); // Trigger the effect on the segment ID
+        // Iterate over active effects and trigger them if they are not already running
+        for (auto& pair : activeEffectsPerSegment) {
+            int segmentID = pair.first;
+            Effect* effect = pair.second;
+
+            if (!effect->isRunning && currentTime - effect->startTime < effect->runTime) {
+                effect->start(); // This sets isRunning to true and triggers the effect
+            }
         }
 
-        // Clear the queue after processing
-        queue.clear();
-    }
+        // Iterate over effectsQueue and update their states
+        for (Effect& effect : effectsQueue) {
+            // If the effect's runtime has expired
+            if (currentTime - effect.startTime >= effect.runTime) {
+                // If the effect is currently running, stop it
+                if (effect.isRunning) {
+                    effect.stop();
+                }
+                // Check if any previously overridden effect needs to resume
+                for (int segmentID : effect.segmentIDs) {
+                    if (activeEffectsPerSegment[segmentID] == &effect) {
+                        // If this was the active effect, check if there is a remaining effect to resume
+                        auto it = std::find_if(effectsQueue.begin(), effectsQueue.end(), [&segmentID](const Effect& otherEffect) {
+                            return otherEffect.remainingRuntime > 0 && std::find(otherEffect.segmentIDs.begin(), otherEffect.segmentIDs.end(), segmentID) != otherEffect.segmentIDs.end();
+                        });
+                        if (it != effectsQueue.end()) {
+                            // Resume the previous effect
+                            activeEffectsPerSegment[segmentID] = &(*it);
+                            it->startTime = currentTime;
+                            it->start();
+                        } else {
+                            // No previous effect to resume, clear the active effect for this segment
+                            activeEffectsPerSegment.erase(segmentID);
+                        }
+                    }
+                }
+            }
+        }
 
-    // Other QueueManager methods as necessary
+        // Remove expired effects from the queue
+        effectsQueue.erase(
+            std::remove_if(
+                effectsQueue.begin(),
+                effectsQueue.end(),
+                [currentTime](const Effect& effect) {
+                    return currentTime - effect.startTime >= effect.runTime && !effect.isRunning;
+                }
+            ),
+            effectsQueue.end()
+        );
+    }
 };
+//emplace_back <- crazy method.
+
 QueueManager queueManager;
+
+/** Checksums
+ *
+ * doorOpen: 16763019
+ * leftTurn: 16755493
+ * rightTurn: 16755748
+ * brake: 16712191
+ * reverse: 16763019
+ * ignition: 16763036
+ * unlock: 16755657
+ * lock: 16712137
+ * off: 511
+ *
+ */

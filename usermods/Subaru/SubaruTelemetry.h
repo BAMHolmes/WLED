@@ -17,6 +17,18 @@
 #define FRONT_SEGMENT 2
 #define RIGHT_SEGMENT 3
 #define UNIFIED_SEGMENT 4
+struct SubaruSegmentConfig {
+    int frontStart;
+    int frontEnd;
+    int leftStart;
+    int leftEnd;
+    int rightStart;
+    int rightEnd;
+    int rearStart;
+    int rearEnd;
+    int unifiedStart;
+    int unifiedEnd;
+};
 
 #define RIGHT_SEGMENT_START 0
 #define RIGHT_SEGMENT_END 200
@@ -32,6 +44,8 @@
 #define INSTANT_TRANSITION 0
 #define MEDIUM_TRANSITION 1000
 #define SLOW_TRANSITION 2000
+
+static SubaruSegmentConfig SUBARU_SEGMENT_CONFIG = {FRONT_SEGMENT_START, FRONT_SEGMENT_END, LEFT_SEGMENT_START, LEFT_SEGMENT_END, RIGHT_SEGMENT_START, RIGHT_SEGMENT_END, REAR_SEGMENT_START, REAR_SEGMENT_END, UNIFIED_SEGMENT_START, UNIFIED_SEGMENT_END};
 class SubaruTelemetry
 {
 private:
@@ -136,6 +150,7 @@ public:
     /**
      *  Constructor method SubaruTelemetry()
      */
+
     SubaruTelemetry()
     {
         setupSegments();

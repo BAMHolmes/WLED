@@ -4,70 +4,129 @@
 #include <Wire.h>
 #include "SubaruUtilities.h"
 
+const char UM_FRONT_SEGMENT_START[] PROGMEM = "frontSegmentStart";
+const char UM_FRONT_SEGMENT_END[] PROGMEM = "frontSegmentEnd";
+const char UM_LEFT_SEGMENT_START[] PROGMEM = "leftSegmentStart";
+const char UM_LEFT_SEGMENT_END[] PROGMEM = "leftSegmentEnd";
+const char UM_RIGHT_SEGMENT_START[] PROGMEM = "rightSegmentStart";
+const char UM_RIGHT_SEGMENT_END[] PROGMEM = "rightSegmentEnd";
+const char UM_REAR_SEGMENT_START[] PROGMEM = "rearSegmentStart";
+const char UM_REAR_SEGMENT_END[] PROGMEM = "rearSegmentEnd";
+const char UM_UNIFIED_SEGMENT_START[] PROGMEM = "unifiedSegmentStart";
+const char UM_UNIFIED_SEGMENT_END[] PROGMEM = "unifiedSegmentEnd";
+
 class Subaru : public Usermod
+
 {
 private:
-  SubaruTelemetry ST = SubaruTelemetry();
   Overrides overrides;
-  EffectCacheCollection cache = EffectCacheCollection();
   EffectCollection effects = EffectCollection();
 
-  void updateSegment(int seg, Effect effect = Effect(), int transition_speed = INSTANT_TRANSITION)
+  SubaruTelemetry ST;
+  QueueManager queueManager;
+
+  // Usermod variable declarations for storing segment indices
+
+  static const char _name[];
+  static const char _enabled[];
+  bool enabled = false;
+
+  void addToConfig(JsonObject &root) override
   {
-    strip.setTransition(transition_speed);
-    // const bool incomingIsPreset = effects.isPreset(effect);
-    const bool isTurningOff = effect.checksum == effects.off.checksum;
+    JsonObject top = root.createNestedObject(FPSTR(_name));
+    top[FPSTR(_enabled)] = enabled;
 
-    if (isTurningOff)
-    {
-      const auto &previouslySavedEffect = cache.generic.getBySegmentAndChecksum(seg, effect);
-
-      // We only care about non-present effects being restored. Otherwise just turn
-      //   off the segment - I don't care anymore.
-      //   it's too difficult to try to ressurect a previously running effect on the segment.
-
-      if (previouslySavedEffect && !effects.isPreset(previouslySavedEffect))
-      {
-        effect = *previouslySavedEffect;
-      }
-    }
-    else
-    {
-      const Effect effectFromSegment = Effect(ST.seg(seg));
-      // const bool currentIsPreset = effects.isPreset(effectFromSegment);
-      cache.generic.setBySegmentAndChecksum(seg, effect, effectFromSegment);
-    }
-    int mode = effect.mode;
-    uint32_t color1 = effect.colors[0];
-    uint32_t color2 = effect.colors[1];
-    uint32_t color3 = effect.colors[2];
-    int speed = effect.speed;
-    uint8_t fade = effect.fade;
-    uint8_t palette = effect.palette;
-    bool on = effect.power;
-    if (!on)
-    {
-      color1 = 0x000000;
-      color2 = 0x000000;
-      color3 = 0x000000;
-    }
-
-    ST.seg(seg).setOption(SEG_OPTION_ON, on);
-    ST.seg(seg).fade_out(fade);
-    ST.seg(seg).setColor(0, color1);
-    ST.seg(seg).setColor(1, color2);
-    ST.seg(seg).setColor(2, color3);
-    ST.seg(seg).setPalette(palette);
-    ST.seg(seg).speed = speed;
-
-    strip.setMode(seg, mode);
-    strip.setBrightness(255, true);
-    strip.trigger();
+    top[FPSTR(UM_FRONT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.frontStart;
+    top[FPSTR(UM_FRONT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.frontEnd;
+    top[FPSTR(UM_LEFT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.leftStart;
+    top[FPSTR(UM_LEFT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.leftEnd;
+    top[FPSTR(UM_RIGHT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.rightStart;
+    top[FPSTR(UM_RIGHT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.rightEnd;
+    top[FPSTR(UM_REAR_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.rearStart;
+    top[FPSTR(UM_REAR_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.rearEnd;
+    top[FPSTR(UM_UNIFIED_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.unifiedStart;
+    top[FPSTR(UM_UNIFIED_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.unifiedEnd;
   }
-  void restorePreviousState(int segment)
+
+  bool readFromConfig(JsonObject &root) override
   {
-    updateSegment(segment, effects.off);
+    JsonObject top = root[FPSTR(_name)];
+    bool configComplete = !top.isNull();
+
+    configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled);
+    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.frontStart);
+    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.frontEnd);
+    configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.leftStart);
+    configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.leftEnd);
+    configComplete &= getJsonValue(top[FPSTR(UM_RIGHT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.rightStart);
+    configComplete &= getJsonValue(top[FPSTR(UM_RIGHT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.rightEnd);
+    configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.rearStart);
+    configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.rearEnd);
+    configComplete &= getJsonValue(top[FPSTR(UM_UNIFIED_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.unifiedStart);
+    configComplete &= getJsonValue(top[FPSTR(UM_UNIFIED_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.unifiedEnd);
+
+    if (configComplete)
+    {
+      ST = SubaruTelemetry();
+    }
+    return configComplete;
   }
+  const char *flashStringToChar(const __FlashStringHelper *flashString)
+  {
+    // You must ensure this buffer is large enough for your strings
+    static char buffer[64];
+    memcpy_P(buffer, reinterpret_cast<const char *>(flashString), sizeof(buffer));
+    buffer[sizeof(buffer) - 1] = 0; // Ensure null-terminated string
+    return buffer;
+  }
+  void appendConfigData() override
+  {
+    String configName = String(FPSTR(_name));
+
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_FRONT_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Front segment start');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_FRONT_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Front segment end');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_LEFT_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Left segment start');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_LEFT_SEGMENT_END)).c_str());
+    oappend(SET_F("', 'Left segment end');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_RIGHT_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Right segment start');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_RIGHT_SEGMENT_END)).c_str());
+    oappend(SET_F("', 'Right segment end');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_REAR_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Rear segment start');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_REAR_SEGMENT_END)).c_str());
+    oappend(SET_F("', 'Rear segment end');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_UNIFIED_SEGMENT_START)).c_str());
+    oappend(SET_F("', 'Unified segment start');"));
+    oappend(SET_F("addTextInput('"));
+    oappend(configName.c_str());
+    oappend(String(FPSTR(UM_UNIFIED_SEGMENT_END)).c_str());
+    oappend(SET_F("', 'Unified segment end');"));
+
+    // Repeat for LEFT, RIGHT, and REAR segments...
+  }
+
 
 public:
   void setup()
@@ -101,53 +160,13 @@ public:
     Wire.endTransmission();                                   // End transmission
   }
 
-  void triggerGlobalEffect(Effect effect = Effect(FX_MODE_STATIC, 0xFF0000, 255, 128, 0), int transition = SLOW_TRANSITION)
-  {
 
-    updateSegment(UNIFIED_SEGMENT, effect, transition);
-  }
-
-  void restoreGlobalEffect(int transition_speed = SLOW_TRANSITION)
-  {
-    updateSegment(UNIFIED_SEGMENT, effects.off, transition_speed);
-  }
-
-  void triggerDoorEffect(int transition = SLOW_TRANSITION)
-  {
-    triggerGlobalEffect(effects.doorOpen, transition);
-    Serial.println("++++++ DOOR EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerUnlockEffect()
-  {
-    triggerGlobalEffect(effects.unlock);
-    Serial.println("++++++ UNLOCK EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerLockEffect()
-  {
-    triggerGlobalEffect(effects.lock);
-    Serial.println("++++++ LOCK EFFECT ACTIVATED ++++++");
-  }
-
-  void triggerIgnitionEffect()
-  {
-    triggerGlobalEffect(effects.ignition);
-    Serial.println("++++++ IGNITION EFFECT ACTIVATED ++++++");
-  }
 
   void loop()
   {
     if (!ST.checkSegmentIntegrity() || strip.isUpdating())
       return;
 
-    static unsigned long brake_effect_delay = 0;
-    static unsigned long left_effect_delay = 3000;
-    static unsigned long right_effect_delay = 3000;
-    static unsigned long door_effect_delay = 10000;
-    static unsigned long unlock_effect_delay = 3000;
-    static unsigned long lock_effect_delay = 3000;
-    static unsigned long ignition_effect_delay = 3000;
     /**
      * Update the state of all things Subaru
      */
@@ -164,50 +183,52 @@ public:
      * BRAKE EFFECT SEQUENCE
      **********************/
     if(ST.brakeEngaged()){
-        queueManager.addEffectToQueue(effects.brake, {REAR_SEGMENT}, brake_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+        queueManager.addEffectToQueue(effects.brake); // 10 seconds run time, 0.5 seconds transition
     }
     
     /**
      * LEFT EFFECT SEQUENCE
      **********************/
     if(ST.leftIndicatorOn()){
-      queueManager.addEffectToQueue(effects.leftTurn, {LEFT_SEGMENT}, left_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+      queueManager.addEffectToQueue(effects.leftTurn); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * RIGHT EFFECT SEQUENCE
      **********************/
     if(ST.rightIndicatorOn()){
-      queueManager.addEffectToQueue(effects.rightTurn, {RIGHT_SEGMENT}, right_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition 
+      queueManager.addEffectToQueue(effects.rightTurn); // 10 seconds run time, 0.5 seconds transition 
     }
 
     /**
      * DOOR EFFECT SEQUENCE
      **********************/
     if(ST.doorOpen()){
-      queueManager.addEffectToQueue(effects.doorOpen, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, door_effect_delay, SLOW_TRANSITION);
+      queueManager.addEffectToQueue(effects.doorOpen);
     }
 
     /**
      * UNLOCK EFFECT SEQUENCE
      ************************/
     if(ST.unlocked()){
-      queueManager.addEffectToQueue(effects.unlock, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, unlock_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+      queueManager.addEffectToQueue(effects.unlock); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * LOCK EFFECT SEQUENCE
      **********************/
     if(ST.locked()){
-      queueManager.addEffectToQueue(effects.lock, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, lock_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+      queueManager.addEffectToQueue(effects.lock); // 10 seconds run time, 0.5 seconds transition
     } 
 
     /**
      * IGNITION EFFECT SEQUENCE
      **************************/
     if(ST.ignitionOn()){
-      queueManager.addEffectToQueue(effects.ignition, {LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_SEGMENT}, ignition_effect_delay, INSTANT_TRANSITION); // 10 seconds run time, 0.5 seconds transition
+      queueManager.addEffectToQueue(effects.ignition); // 10 seconds run time, 0.5 seconds transition
     }
     queueManager.processQueue();
   }
 };
+const char Subaru::_name[] = "Subaru";
+const char Subaru::_enabled[] = "enabled";
