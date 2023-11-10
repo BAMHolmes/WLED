@@ -8,13 +8,6 @@
 #include <vector>
 #include "Effect.h"
 #include "ColorPrint.h"
-/**
- * A Class with methods for printing colored text to Serial monitor.
- * It accepts a String and a color code for the foreground and background color of the text .
- * The color codes should be enums like FG_RED, BG_GREEN for forground red and background green respectfully
- */
-
-
 
 /**
  * @brief Class for managing the queue of effects for each segment.
@@ -183,16 +176,3 @@ public:
 QueueManager queueManager;
 
 // emplace_back <- crazy method.
-/** Checksums
- *
- * doorOpen: 16763019
- * leftTurn: 16755493
- * rightTurn: 16755748
- * brake: 16712191
- * reverse: 16763019
- * ignition: 16763036
- * unlock: 16755657
- * lock: 16712137
- * off: 511
- *
- */

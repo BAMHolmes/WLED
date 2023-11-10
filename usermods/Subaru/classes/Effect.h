@@ -2,6 +2,9 @@
 #include "ColorPrint.h"
 #include "SubaruTelemetry.h"
 
+/**
+ * @brief Class for managing the effect for each segment.
+*/
 class Effect
 {
 public:

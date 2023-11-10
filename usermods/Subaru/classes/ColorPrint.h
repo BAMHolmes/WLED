@@ -2,6 +2,12 @@
 #ifndef COLOR_PRINT_H
 #define COLOR_PRINT_H
 
+/**
+ * A Class with methods for printing colored text to Serial monitor.
+ * It accepts a String and a color code for the foreground and background color of the text .
+ * The color codes should be enums like FG_RED, BG_GREEN for forground red and background green respectfully
+ */
+
 class ColorPrint
 {
 public:
