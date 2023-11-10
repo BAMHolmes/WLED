@@ -15,6 +15,7 @@
 class ColorPrint
 {
 public:
+    static bool enabled;
     enum Color
     {
         FG_BLACK = 30,
@@ -39,13 +40,19 @@ public:
 
     static void print(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
     {
+        if(!enabled) return;
         Serial.print("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
     }
     static void println(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
     {
+        if(!enabled) return;
         Serial.println("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
     }
 };
+// Disable or enable color print messages
+bool ColorPrint::enabled = true;
+
+
 ColorPrint p;
 class EffectCollection;
 class Overrides
@@ -222,7 +229,6 @@ public:
     }
     void triggerEffect()
     {
-        // Iterate through all segmentIDs and print on a single line
         p.print("Triggering [" + name + "]  on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
         for (const auto &segmentID : segmentIDs)
         {
@@ -251,9 +257,6 @@ public:
             strip.trigger();
         }
         p.println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
-        /**
-         *
-         */
     }
     bool isPreset(const std::array<String, 9> &presetChecksums) const
     {
@@ -322,17 +325,17 @@ public:
     /** Print all effect names and their corresponding checksums */
     void printAllChecksums() const
     {
-        Serial.println("*****Checksums for all effects:******");
-        Serial.println("doorOpen: " + String(doorOpen.checksum));
-        Serial.println("leftTurn: " + String(leftTurn.checksum));
-        Serial.println("rightTurn: " + String(rightTurn.checksum));
-        Serial.println("brake: " + String(brake.checksum));
-        Serial.println("reverse: " + String(reverse.checksum));
-        Serial.println("ignition: " + String(ignition.checksum));
-        Serial.println("unlock: " + String(unlock.checksum));
-        Serial.println("lock: " + String(lock.checksum));
-        Serial.println("off: " + String(off.checksum));
-        Serial.println("*************************************");
+        p.println("*****Checksums for all effects:******");
+        p.println("doorOpen: " + String(doorOpen.checksum));
+        p.println("leftTurn: " + String(leftTurn.checksum));
+        p.println("rightTurn: " + String(rightTurn.checksum));
+        p.println("brake: " + String(brake.checksum));
+        p.println("reverse: " + String(reverse.checksum));
+        p.println("ignition: " + String(ignition.checksum));
+        p.println("unlock: " + String(unlock.checksum));
+        p.println("lock: " + String(lock.checksum));
+        p.println("off: " + String(off.checksum));
+        p.println("*************************************");
     }
     bool isPreset(const Effect *effect) const
     {
@@ -347,7 +350,7 @@ public:
     }
 };
 
-EffectCollection effects; // Assuming this exists and is initialized correctly
+EffectCollection effects;
 
 Effect::Effect(int seg)
 {
@@ -407,6 +410,10 @@ Effect::Effect(int seg)
         }
     }
 };
+/**
+ * @brief Class for managing the queue of effects for each segment.
+ * 
+ */
 class QueueManager
 {
 private:
@@ -424,15 +431,11 @@ private:
         return effects.isPreset(effect);
     }
 
-    // void enqueueEffect(Effect effect) {
-    //     // Enqueue the effect in its respective segment queue
-    //     for (int segmentID : effect.segmentIDs) {
-    //         auto& queue = effectsPerSegment[segmentID];
-    //         queue.push_back(std::move(effect));
-    //     }
-    // }
-
 public:
+    /**
+     * @brief Checks the LED segments and updates them if necessary.
+     * 
+     */
     void checkSegmentsAndUpdate()
     {
         // Check each segment and if a custom effect is found that is not in the queue, enqueue it
@@ -448,7 +451,7 @@ public:
                     p.println("Adding custom effect [" + String(currentEffectOnSegment.name) + "] to the back of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     queue.push_back(currentEffectOnSegment);
                 }
-                else if (queue.back().checksum != currentEffectOnSegment.checksum)
+                else if (!strip.isUpdating() && queue.back().checksum != currentEffectOnSegment.checksum)
                 {
                     p.println("Current seg(" + String(segmentID) + ") checksum: " + String(currentEffectOnSegment.checksum) + ", last seg(" + String(segmentID) + ") checksum: " + String(queue.back().checksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     // p.println("Replacing custom effect [" + String(currentEffectOnSegment.name) + "] in the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
@@ -463,10 +466,15 @@ public:
         }
     }
 
+    /**
+     * Adds the given effect to the end of the effect queue.
+     *
+     * @param effect The effect to add to the queue.
+     */
     void addEffectToQueue(Effect effect)
     {
-        if(!effect.name) return;
-        Serial.println("Attempting to add effect [" + String(effect.name) + "] to the queue...");
+        if (!effect.name)
+            return;
         bool isPreset = isPresetEffect(effect);
         unsigned long currentTime = millis();
         effect.startTime = currentTime;
@@ -492,21 +500,24 @@ public:
             }
             if (!effectExists && !isPreset)
             {
-                
+
                 // This is a custom effect, place it at the beginning of the queue
-                Serial.println("Adding custom effect [" + String(effect.name) + "] to the back of the queue on segment " + String(segmentID));
+                p.println("Adding custom effect [" + String(effect.name) + "] to the back of the queue on segment " + String(segmentID));
                 queue.push_back(effect);
             }
-            else if(!effectExists && isPreset)
+            else if (!effectExists && isPreset)
             {
                 p.println("Adding preset [" + String(effect.name) + "] to the front of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
 
                 queue.push_front(effect);
             }
-        
         }
     }
 
+    /**
+     * Process the effect queue for each segment and start the first effect in the queue if it's not already running.
+     * If the effect is a preset and should be running, start it. If the effect has expired, stop it and start the next effect in the queue.
+     */
     void processQueue()
     {
         checkSegmentsAndUpdate();
@@ -540,6 +551,9 @@ public:
                 // Move to the next effect if the current one has finished
                 currentEffect->stop();
                 queue.pop_front();
+                // Remove the currentEffect from activeEffectsPerSegment
+                activeEffectsPerSegment.erase(segmentID);
+
                 // Print and handle the queue length and transitions
                 if (queue.empty())
                 {
@@ -550,7 +564,7 @@ public:
                 else
                 {
                     currentEffect = &queue.front();
-                    p.println("Starting next effect in queue (" + String(currentEffect->name) +") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
+                    p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
                     currentEffect->start();
                     activeEffectsPerSegment[segmentID] = currentEffect;
