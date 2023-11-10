@@ -238,13 +238,11 @@ public:
         strip.setSegment(FRONT_SEGMENT, FRONT_SEGMENT_START, FRONT_SEGMENT_END, 1, 0, 0);
         strip.setSegment(LEFT_SEGMENT, LEFT_SEGMENT_START, LEFT_SEGMENT_END, 1, 0, 0);
         strip.setSegment(REAR_SEGMENT, REAR_SEGMENT_START, REAR_SEGMENT_END, 1, 0, 0);
-        strip.setSegment(UNIFIED_SEGMENT, UNIFIED_SEGMENT_START, UNIFIED_SEGMENT_END, 1, 0, 0);
 
         auto &front = frontSegment();
         auto &rear = rearSegment();
         auto &left = leftSegment();
         auto &right = rightSegment();
-        auto &unified = unifiedSegment();
 
         right.setOption(SEG_OPTION_ON, false);
         right.setOption(SEG_OPTION_SELECTED, true);
@@ -254,8 +252,7 @@ public:
         rear.setOption(SEG_OPTION_SELECTED, true);
         front.setOption(SEG_OPTION_ON, false);
         front.setOption(SEG_OPTION_SELECTED, true);
-        unified.setOption(SEG_OPTION_ON, false);
-        unified.setOption(SEG_OPTION_SELECTED, true);
+
     }
     bool checkSegmentIntegrity()
     {
@@ -273,8 +270,7 @@ public:
         integrityCheckResult &= seg(FRONT_SEGMENT).stop == FRONT_SEGMENT_END;
         integrityCheckResult &= seg(RIGHT_SEGMENT).start == RIGHT_SEGMENT_START;
         integrityCheckResult &= seg(RIGHT_SEGMENT).stop == RIGHT_SEGMENT_END;
-        integrityCheckResult &= seg(UNIFIED_SEGMENT).start == UNIFIED_SEGMENT_START;
-        integrityCheckResult &= seg(UNIFIED_SEGMENT).stop == UNIFIED_SEGMENT_END;
+
         // Print all start and stop values to console.
 
         if (!integrityCheckResult && !previousIntegrityCheckResult)
@@ -284,7 +280,6 @@ public:
             Serial.println("LEFT_SEGMENT_START: " + String(strip.getSegment(LEFT_SEGMENT).start) + " LEFT_SEGMENT_END: " + String(strip.getSegment(LEFT_SEGMENT).stop) + "|" + String(LEFT_SEGMENT_START) + ":" + String(LEFT_SEGMENT_END));
             Serial.println("FRONT_SEGMENT_START: " + String(strip.getSegment(FRONT_SEGMENT).start) + " FRONT_SEGMENT_END: " + String(strip.getSegment(FRONT_SEGMENT).stop) + "|" + String(FRONT_SEGMENT_START) + ":" + String(FRONT_SEGMENT_END));
             Serial.println("RIGHT_SEGMENT_START: " + String(strip.getSegment(RIGHT_SEGMENT).start) + " RIGHT_SEGMENT_END: " + String(strip.getSegment(RIGHT_SEGMENT).stop) + "|" + String(RIGHT_SEGMENT_START) + ":" + String(RIGHT_SEGMENT_END));
-            Serial.println("UNIFIED_SEGMENT START: " + String(strip.getSegment(UNIFIED_SEGMENT).start) + " UNIFIED_SEGMENT_END: " + String(strip.getSegment(UNIFIED_SEGMENT).stop) + "|" + String(UNIFIED_SEGMENT_START) + ":" + String(UNIFIED_SEGMENT_END));
             Serial.println("Configuration incorrect, resetting segments...");
             setupSegments();
             return false;
@@ -390,5 +385,4 @@ public:
     }
 
 };
-
 #endif // SUBARU_TELEMETRY_H

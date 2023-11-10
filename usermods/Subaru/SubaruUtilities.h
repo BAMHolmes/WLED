@@ -32,7 +32,9 @@ public:
         BG_BLUE = 44,
         BG_MAGENTA = 45,
         BG_CYAN = 46,
-        BG_WHITE = 47
+        BG_WHITE = 47,
+        BG_GRAY = 100
+
     };
 
     static void print(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
@@ -45,6 +47,7 @@ public:
     }
 };
 ColorPrint p;
+class EffectCollection;
 class Overrides
 {
 public:
@@ -142,6 +145,7 @@ std::vector<int> DEFAULT_SEGMENT_IDS = {FRONT_SEGMENT, LEFT_SEGMENT, RIGHT_SEGME
 class Effect
 {
 public:
+    String name;
     std::vector<int> segmentIDs;
     uint8_t mode;
     uint32_t colors[3];
@@ -153,10 +157,11 @@ public:
     unsigned long runTime;
     unsigned long remainingRuntime;
     uint8_t palette;
-    uint32_t checksum;
+    String checksum;
 
     Effect()
-        : segmentIDs(DEFAULT_SEGMENT_IDS),
+        : name("Default"),
+          segmentIDs(DEFAULT_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
           speed(255),
           fade(255),
@@ -171,8 +176,9 @@ public:
         std::fill(std::begin(colors), std::end(colors), 0x000000);
     }
 
-    Effect(std::vector<int> seg, uint8_t m, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, bool pw = true)
-        : segmentIDs(seg),
+    Effect(String n, std::vector<int> seg, uint8_t m, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, bool pw = true)
+        : name(n),
+          segmentIDs(seg),
           mode(m),
           speed(s),
           fade(f),
@@ -189,25 +195,11 @@ public:
         colors[2] = 0x000000;
     }
     /** Construct an effect from a Segment id. Use ST to fetch the segment by ID */
-    Effect(int seg){
-        Segment& segment = SubaruTelemetry::seg(seg);
-        segmentIDs.push_back(seg);
-        mode = segment.mode;
-        speed = segment.speed;
-        fade = 255;
-        power = segment.getOption(SEG_OPTION_ON);
-        startTime = 0;
-        isRunning = false;
-        runTime = 0;
-        palette = segment.palette;
-        checksum = calculateChecksum();
-        colors[0] = segment.colors[0];
-        colors[1] = segment.colors[1];
-        colors[2] = segment.colors[2];
-    }
+    Effect(int seg);
+
     void start()
     {
-        if (!isRunning)
+        if (!isRunning && segmentIDs.size() > 0)
         {
             triggerEffect(); // Actual function to start the effect
             isRunning = true;
@@ -218,47 +210,52 @@ public:
     {
         // Code to stop the effect if necessary
         isRunning = false;
-        p.println("Stopping effect " + String(checksum) + " on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+        if (segmentIDs.size() <= 0)
+            return;
+
+        p.print("Stopping [" + name + "] on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        for (const auto &segmentID : segmentIDs)
+        {
+            p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        }
+        p.println(".");
     }
     void triggerEffect()
     {
         // Iterate through all segmentIDs and print on a single line
-        p.print("Triggering effect " + String(checksum) + " on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        p.print("Triggering [" + name + "]  on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
         for (const auto &segmentID : segmentIDs)
         {
             p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+            uint32_t color1 = colors[0];
+            uint32_t color2 = colors[1];
+            uint32_t color3 = colors[2];
+            bool on = power;
+            if (!on)
+            {
+                color1 = 0x000000;
+                color2 = 0x000000;
+                color3 = 0x000000;
+            }
+
+            SubaruTelemetry::seg(segmentID).setOption(SEG_OPTION_ON, on);
+            SubaruTelemetry::seg(segmentID).fade_out(fade);
+            SubaruTelemetry::seg(segmentID).setColor(0, color1);
+            SubaruTelemetry::seg(segmentID).setColor(1, color2);
+            SubaruTelemetry::seg(segmentID).setColor(2, color3);
+            SubaruTelemetry::seg(segmentID).setPalette(palette);
+            SubaruTelemetry::seg(segmentID).speed = speed;
+
+            strip.setMode(segmentID, mode);
+            strip.setBrightness(255, true);
+            strip.trigger();
         }
-        p.println("...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        p.println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
         /**
-         *     int mode = effect.mode;
-    uint32_t color1 = effect.colors[0];
-    uint32_t color2 = effect.colors[1];
-    uint32_t color3 = effect.colors[2];
-    int speed = effect.speed;
-    uint8_t fade = effect.fade;
-    uint8_t palette = effect.palette;
-    bool on = effect.power;
-    if (!on)
-    {
-      color1 = 0x000000;
-      color2 = 0x000000;
-      color3 = 0x000000;
+         *
+         */
     }
-
-    ST.seg(seg).setOption(SEG_OPTION_ON, on);
-    ST.seg(seg).fade_out(fade);
-    ST.seg(seg).setColor(0, color1);
-    ST.seg(seg).setColor(1, color2);
-    ST.seg(seg).setColor(2, color3);
-    ST.seg(seg).setPalette(palette);
-    ST.seg(seg).speed = speed;
-
-    strip.setMode(seg, mode);
-    strip.setBrightness(255, true);
-    strip.trigger();
-        */
-    }
-    bool isPreset(const std::array<uint32_t, 9> &presetChecksums) const
+    bool isPreset(const std::array<String, 9> &presetChecksums) const
     {
         for (const auto &preset : presetChecksums)
         {
@@ -271,13 +268,15 @@ public:
     }
 
 private:
-    uint32_t calculateChecksum() const
+    String calculateChecksum() const
     {
-        uint32_t checksum = mode;
-        checksum += colors[0];
-        checksum += speed;
-        checksum += palette;
-        checksum += static_cast<uint32_t>(power);
+        // Calculate the checksum, a string of the "mode", "colors", "speed", "palette", and "power" combined.
+        //  This is used to identify the effect and prevent duplicates from being added to the queue
+        String checksum = String(mode);
+        checksum += ":" + String(colors[0]);
+        checksum += ":" + String(speed);
+        checksum += ":" + String(palette);
+        checksum += ":" + String(power);
         return checksum;
     }
 };
@@ -295,17 +294,17 @@ public:
     Effect lock;
     Effect off;
 
-    std::array<uint32_t, 9> presetChecksums;
+    std::array<String, 9> presetChecksums;
     // segmentIDs, mode, colors{c1, 0x000000, 0x000000}, speed, fade, runTime, palette, power=on
-    EffectCollection() : doorOpen(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0xFFC68C, 255, 255, 10000, 0)),
-                         leftTurn(Effect({LEFT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 3000, 0)),
-                         rightTurn(Effect({RIGHT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 3000, 0)),
-                         brake(Effect({REAR_SEGMENT}, FX_MODE_STATIC, 0xFF0000, 255, 255, 0, 0)),
-                         reverse(Effect({REAR_SEGMENT}, FX_MODE_STATIC, 0xFFC68C, 255, 255, 0, 0)),
-                         ignition(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_LOADING, 0xFFC68C, 225, 255, 3000, 0)),
-                         unlock(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFFAA00, 200, 255, 3000, 0)),
-                         lock(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFF0000, 200, 255, 3000, 0)),
-                         off(Effect(DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0x000000, 255, 255, 0, 0))
+    EffectCollection() : doorOpen(Effect("Door Open", DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0xFFC68C, 255, 255, 10000, 0)),
+                         leftTurn(Effect("Left Turn", {LEFT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 0, 3000, 0)),
+                         rightTurn(Effect("Right Turn", {RIGHT_SEGMENT}, FX_MODE_RUNNING_COLOR, 0xFFAA00, 255, 255, 3000, 0)),
+                         brake(Effect("Brake Engaged", {REAR_SEGMENT}, FX_MODE_STATIC, 0xFF0000, 255, 255, 0, 0)),
+                         reverse(Effect("Reverse Engaged", {REAR_SEGMENT}, FX_MODE_STATIC, 0xFFC68C, 255, 255, 0, 0)),
+                         ignition(Effect("Ignition On", DEFAULT_SEGMENT_IDS, FX_MODE_LOADING, 0xFFC68C, 225, 255, 3000, 0)),
+                         unlock(Effect("Car Unlocked", DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFFAA00, 200, 255, 3000, 0)),
+                         lock(Effect("Car Locked", DEFAULT_SEGMENT_IDS, FX_MODE_BLINK, 0xFF0000, 200, 255, 3000, 0)),
+                         off(Effect("Segment Off", DEFAULT_SEGMENT_IDS, FX_MODE_STATIC, 0x000000, 255, 255, 0, 0))
     {
         presetChecksums = {
             doorOpen.checksum,
@@ -348,153 +347,222 @@ public:
     }
 };
 
-class QueueItem
+EffectCollection effects; // Assuming this exists and is initialized correctly
+
+Effect::Effect(int seg)
 {
-public:
-    Effect effect;            // The Effect to be run
-    unsigned long runTime;    // Duration the Effect should run
-    unsigned long transition; // Transition time for the Effect
-
-    // The constructor now only needs to take runTime and transition, since Effect contains segmentIDs
-    QueueItem(Effect effect, unsigned long transition)
-        : effect(effect), transition(transition)
+    name = String("EFS" + String(seg));
+    Segment &segment = SubaruTelemetry::seg(seg);
+    segmentIDs.push_back(seg);
+    mode = segment.mode;
+    speed = segment.speed;
+    fade = 255;
+    power = segment.getOption(SEG_OPTION_ON);
+    startTime = 0;
+    isRunning = false;
+    runTime = 0;
+    palette = segment.palette;
+    colors[0] = segment.colors[0];
+    colors[1] = segment.colors[1];
+    colors[2] = segment.colors[2];
+    checksum = calculateChecksum();
+    // If checksum matches a preset, return a reference to the preset
+    if (isPreset(effects.presetChecksums))
     {
-        // Start time is set when the effect is triggered, not here in the constructor
+        if (checksum == effects.doorOpen.checksum)
+        {
+            *this = effects.doorOpen;
+        }
+        else if (checksum == effects.leftTurn.checksum)
+        {
+            *this = effects.leftTurn;
+        }
+        else if (checksum == effects.rightTurn.checksum)
+        {
+            *this = effects.rightTurn;
+        }
+        else if (checksum == effects.brake.checksum)
+        {
+            *this = effects.brake;
+        }
+        else if (checksum == effects.reverse.checksum)
+        {
+            *this = effects.reverse;
+        }
+        else if (checksum == effects.ignition.checksum)
+        {
+            *this = effects.ignition;
+        }
+        else if (checksum == effects.unlock.checksum)
+        {
+            *this = effects.unlock;
+        }
+        else if (checksum == effects.lock.checksum)
+        {
+            *this = effects.lock;
+        }
+        else if (checksum == effects.off.checksum)
+        {
+            *this = effects.off;
+        }
     }
-
-    bool isExpired(unsigned long currentTime) const
-    {
-        return currentTime - effect.startTime >= effect.runTime;
-    }
-
-    // Other QueueItem methods as necessary
 };
-
-// QueueManager class
-class QueueManager {
+class QueueManager
+{
 private:
     std::map<int, std::deque<Effect>> effectsPerSegment;
-    std::map<int, Effect*> activeEffectsPerSegment;
-    EffectCollection effectCollection; // Assuming this exists and is initialized correctly
+    std::map<int, Effect *> activeEffectsPerSegment;
 
     // Check if the effect is a predefined one
-    bool isPresetEffect(const Effect& effect) const {
-        return effectCollection.isPreset(&effect);
+    bool isPresetEffect(const Effect &effect) const
+    {
+        return effects.isPreset(&effect);
     }
-    void enqueueEffect(Effect effect) {
-        // Enqueue the effect in its respective segment queue
-        for (int segmentID : effect.segmentIDs) {
-            auto& queue = effectsPerSegment[segmentID];
-            queue.push_back(std::move(effect));
-        }
+    // Check if the effect is a predefined one when the effect is a pointer
+    bool isPresetEffect(const Effect *effect) const
+    {
+        return effects.isPreset(effect);
     }
+
+    // void enqueueEffect(Effect effect) {
+    //     // Enqueue the effect in its respective segment queue
+    //     for (int segmentID : effect.segmentIDs) {
+    //         auto& queue = effectsPerSegment[segmentID];
+    //         queue.push_back(std::move(effect));
+    //     }
+    // }
+
 public:
-    void checkSegmentsAndUpdate() {
+    void checkSegmentsAndUpdate()
+    {
         // Check each segment and if a custom effect is found that is not in the queue, enqueue it
-        for (int segmentID : DEFAULT_SEGMENT_IDS) {
-            Effect currentEffectOnSegment(segmentID);
-            if (!isPresetEffect(currentEffectOnSegment)) {
-                // Check if this custom effect is already in the queue
-                auto& queue = effectsPerSegment[segmentID];
-                if (std::none_of(queue.begin(), queue.end(), [&currentEffectOnSegment](const Effect& effect) {
-                        return effect.checksum == currentEffectOnSegment.checksum;
-                    })) {
-                    // If not, enqueue it as the default state
-                    enqueueEffect(std::move(currentEffectOnSegment));
+        for (int segmentID : DEFAULT_SEGMENT_IDS)
+        {
+            Effect currentEffectOnSegment = Effect(segmentID);
+            if (!isPresetEffect(currentEffectOnSegment))
+            {
+                // p.println("Checking segment " + String(segmentID) + " for custom effects...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+                auto &queue = effectsPerSegment[segmentID];
+                if (queue.empty())
+                {
+                    p.println("Adding custom effect [" + String(currentEffectOnSegment.name) + "] to the back of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+                    queue.push_back(currentEffectOnSegment);
+                }
+                else if (queue.back().checksum != currentEffectOnSegment.checksum)
+                {
+                    p.println("Current seg(" + String(segmentID) + ") checksum: " + String(currentEffectOnSegment.checksum) + ", last seg(" + String(segmentID) + ") checksum: " + String(queue.back().checksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+                    // p.println("Replacing custom effect [" + String(currentEffectOnSegment.name) + "] in the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
+                    queue.pop_back();
+                    queue.push_back(currentEffectOnSegment);
                 }
             }
-        }
-    }
-    void addEffectToQueue(Effect effect) {
-        unsigned long currentTime = millis();
-        effect.startTime = currentTime; // Set the start time to now
-
-        if (!isPresetEffect(effect)) {
-            // This is a custom effect with infinite run time, enqueue it directly
-            enqueueEffect(std::move(effect));
-        } else {
-            // This is a preset effect, add it to the front of the queues for its segments
-            for (int segmentID : effect.segmentIDs) {
-                auto& queue = effectsPerSegment[segmentID];
-                queue.push_front(std::move(effect));
+            else
+            {
+                p.println("Segment " + String(segmentID) + " is running a preset effect:" + String(currentEffectOnSegment.name), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             }
         }
     }
-    void addEffectToQueueOld(Effect effect) {
+
+    void addEffectToQueue(Effect effect)
+    {
+        if(!effect.name) return;
+        Serial.println("Attempting to add effect [" + String(effect.name) + "] to the queue...");
+        bool isPreset = isPresetEffect(effect);
         unsigned long currentTime = millis();
-        effect.startTime = currentTime; // Set the start time to now
+        effect.startTime = currentTime;
+        // This handles both custom and preset effects, and places them appropriately in the queue
+        for (int segmentID : effect.segmentIDs)
+        {
+            auto &queue = effectsPerSegment[segmentID];
 
-        for (int segmentID : effect.segmentIDs) {
-            bool isPreset = isPresetEffect(effect);
-            auto& segmentQueue = effectsPerSegment[segmentID];
-
-            // If it's a custom effect (runTime is 0), place it at the end as a default state
-            if (isPreset) {
-                // Replace or add the custom effect at the end of the queue
-                if (!segmentQueue.empty() && !isPresetEffect(segmentQueue.back())) {
-                    segmentQueue.back() = effect;
-                } else {
-                    segmentQueue.push_back(effect);
+            // This is a preset effect, add it to the front of the queue
+            // Loop through the queue and check if an effect with the same name and checksum already exists
+            // if so, append the new effect's runtime to the existing effect's runtime and remove the new effect
+            // if not, add the new effect to the front of the queue
+            bool effectExists = false;
+            for (Effect &existingEffect : queue)
+            {
+                if (existingEffect.checksum == effect.checksum)
+                {
+                    p.println("Effect [" + String(effect.name) + "] already exists in the queue on segment " + String(segmentID) + ", appending run time...", ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
+                    existingEffect.startTime = currentTime;
+                    effectExists = true;
+                    break;
                 }
-            } else {
-                // It's a preset effect, add to the front of the queue
-                segmentQueue.push_front(effect);
             }
+            if (!effectExists && !isPreset)
+            {
+                
+                // This is a custom effect, place it at the beginning of the queue
+                Serial.println("Adding custom effect [" + String(effect.name) + "] to the back of the queue on segment " + String(segmentID));
+                queue.push_back(effect);
+            }
+            else if(!effectExists && isPreset)
+            {
+                p.println("Adding preset [" + String(effect.name) + "] to the front of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
+
+                queue.push_front(effect);
+            }
+        
         }
     }
 
-    void processQueue() {
+    void processQueue()
+    {
         checkSegmentsAndUpdate();
         unsigned long currentTime = millis();
 
         // Iterate over each segment's queue
-        for (auto& pair : effectsPerSegment) {
+        for (auto &pair : effectsPerSegment)
+        {
             int segmentID = pair.first;
-            std::deque<Effect>& segmentQueue = pair.second;
+            std::deque<Effect> &queue = pair.second;
 
-            if (segmentQueue.empty()) continue;
+            if (queue.empty())
+                continue;
 
             // Process the first effect in the queue if it's not already running
-            Effect* currentEffect = &segmentQueue.front();
-            if (!currentEffect->isRunning && (currentEffect->runTime == 0 || currentTime - currentEffect->startTime < currentEffect->runTime)) {
-                currentEffect->start();
-                activeEffectsPerSegment[segmentID] = currentEffect;
-            }
+            Effect *currentEffect = &queue.front();
+            bool isPreset = isPresetEffect(currentEffect);
+            bool active = (currentTime - currentEffect->startTime < currentEffect->runTime);
+            bool expired = (currentTime - currentEffect->startTime >= currentEffect->runTime);
 
-            // Move to the next effect if the current one has finished, unless it's a custom effect with infinite run time
-            if (currentEffect->isRunning && currentEffect->runTime > 0 && currentTime - currentEffect->startTime >= currentEffect->runTime) {
+            // Check if the effect is a preset and if should be running. If so, start it
+            if (isPreset && active && !currentEffect->isRunning)
+            {
+                p.println("Starting preset effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+                activeEffectsPerSegment[segmentID] = currentEffect;
+                currentEffect->start();
+            }
+            else if (isPreset && expired)
+            {
+                p.println("[" + String(currentEffect->name) + "] on segment " + String(segmentID) + " has expired, stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+                // Move to the next effect if the current one has finished
                 currentEffect->stop();
-                segmentQueue.pop_front();
-                // Check if the segmentQueue is empty - if so, trigger an "effects.off" effect on all segments
-                if (segmentQueue.empty()) {
-                    Effect offEffect = effectCollection.off;
+                queue.pop_front();
+                // Print and handle the queue length and transitions
+                if (queue.empty())
+                {
+                    p.println("Queue on segment " + String(segmentID) + " is empty, starting off effect...", ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
+                    Effect offEffect = effects.off;
                     offEffect.start();
                 }
-                activeEffectsPerSegment.erase(segmentID);
-            }
-        }
+                else
+                {
+                    currentEffect = &queue.front();
+                    p.println("Starting next effect in queue (" + String(currentEffect->name) +") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
-        // Clean up the queue by removing expired effects, except for the custom effect which should stay
-        for (auto& pair : effectsPerSegment) {
-            //int segmentID = pair.first;
-            std::deque<Effect>& segmentQueue = pair.second;
-
-            while (!segmentQueue.empty()) {
-                Effect& effect = segmentQueue.front();
-                if (effect.runTime > 0 && currentTime - effect.startTime >= effect.runTime) {
-                    segmentQueue.pop_front();
-                } else {
-                    break;
+                    currentEffect->start();
+                    activeEffectsPerSegment[segmentID] = currentEffect;
                 }
             }
         }
     }
 };
 
-// emplace_back <- crazy method.
-
 QueueManager queueManager;
 
+// emplace_back <- crazy method.
 /** Checksums
  *
  * doorOpen: 16763019

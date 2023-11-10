@@ -20,8 +20,6 @@ class Subaru : public Usermod
 {
 private:
   Overrides overrides;
-  EffectCollection effects = EffectCollection();
-
   SubaruTelemetry ST;
   QueueManager queueManager;
 
@@ -132,6 +130,7 @@ public:
   void setup()
   {
     ST.setupSegments();
+    effects.off.triggerEffect();
     Wire.begin(SubaruTelemetry::SDA_PIN, SubaruTelemetry::SCL_PIN);
     writePCF8575(0x0000); // Configure all pins as outputs initially
     Serial.println("All outputs written to PCF8575");
