@@ -8,15 +8,12 @@
 #ifndef SUBARU_TELEMETRY_H
 #define SUBARU_TELEMETRY_H
 
-// #define BRAKE_PEDAL 19
-// #define DOOR_OPEN 5
-// #define LEFT_INDICATOR 23
-// #define RIGHT_INDICATOR 18
 #define REAR_SEGMENT 0
 #define LEFT_SEGMENT 1
 #define FRONT_SEGMENT 2
 #define RIGHT_SEGMENT 3
 #define UNIFIED_SEGMENT 4
+
 struct SubaruSegmentConfig {
     int frontStart;
     int frontEnd;
@@ -385,4 +382,6 @@ public:
     }
 
 };
+std::vector<int> DEFAULT_SEGMENT_IDS = {FRONT_SEGMENT, LEFT_SEGMENT, RIGHT_SEGMENT, REAR_SEGMENT};
+
 #endif // SUBARU_TELEMETRY_H

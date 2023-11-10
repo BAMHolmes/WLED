@@ -2,7 +2,7 @@
 #include <FastLED.h>
 #include <const.h>
 #include <Wire.h>
-#include "SubaruUtilities.h"
+#include "classes/QueueManager.h"
 
 const char UM_FRONT_SEGMENT_START[] PROGMEM = "frontSegmentStart";
 const char UM_FRONT_SEGMENT_END[] PROGMEM = "frontSegmentEnd";
@@ -19,7 +19,6 @@ class Subaru : public Usermod
 
 {
 private:
-  Overrides overrides;
   SubaruTelemetry ST;
   QueueManager queueManager;
 
