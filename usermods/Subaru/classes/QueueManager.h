@@ -169,12 +169,14 @@ public:
                 if (queue.empty())
                 {
                     p.println("Queue on segment " + String(segmentID) + " is empty, starting off effect...", ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
+ 
                     Effect offEffect = effects.off;
                     offEffect.start(segmentID);
                 }
                 else
                 {
-                    currentEffect = &queue.front();
+
+                    currentEffect = &queue.front().setInterimTransitionSpeed(currentEffect->transitionSpeed);
                     p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
                     currentEffect->start(segmentID);

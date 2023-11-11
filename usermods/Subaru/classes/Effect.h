@@ -24,6 +24,7 @@ public:
     std::vector<int> segmentIDs;
     uint8_t mode;
     int transitionSpeed;
+    int interimTransitionSpeed;
     uint32_t colors[3];
     uint8_t speed;
     uint8_t fade;
@@ -53,6 +54,7 @@ public:
           intensity(255),
           checksum("") // Ensure checksum is calculated last
     {
+        interimTransitionSpeed = -1;
         checksum = calculateChecksum();
     }
     Effect()
@@ -73,6 +75,7 @@ public:
           intensity(255),
           checksum("") // Ensure checksum is calculated last
     {
+        interimTransitionSpeed = -1;
         checksum = calculateChecksum();
     }
 
@@ -93,10 +96,12 @@ public:
           intensity(i),
           checksum("") // Ensure checksum is calculated last
     {
+        interimTransitionSpeed = -1;
         checksum = calculateChecksum();
     }
-    /** Construct an effect from a Segment id. Use ST to fetch the segment by ID */
+    /** Construct an effect from a Segment ID */
     Effect(int seg);
+
     // Builder methods
     Effect &setName(const String &n)
     {
@@ -127,7 +132,11 @@ public:
         transitionSpeed = ts;
         return *this;
     }
-
+    Effect &setInterimTransitionSpeed(int its)
+    {
+        interimTransitionSpeed = its;
+        return *this;
+    }
     Effect &setColor(uint32_t c1, uint32_t c2 = 0x000000, uint32_t c3 = 0x000000)
     {
         colors[0] = c1;
@@ -240,8 +249,12 @@ public:
             SegCon::seg(segmentID).setColor(2, color3);
             SegCon::seg(segmentID).setPalette(palette);
             SegCon::seg(segmentID).speed = speed;
-            SegCon::seg(segmentID).startTransition(transitionSpeed);
-
+            if(interimTransitionSpeed != -1){
+                SegCon::seg(segmentID).startTransition(interimTransitionSpeed);
+                interimTransitionSpeed = -1;
+            }else{
+                SegCon::seg(segmentID).startTransition(transitionSpeed);
+            }
             strip.trigger();
         }
         p.println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
