@@ -15,10 +15,14 @@
  */
 class QueueManager
 {
+public: 
+   QueueManager(){
+        effects.printAllChecksums();
+    }
 private:
     std::map<int, std::deque<Effect>> effectsPerSegment;
     std::map<int, Effect *> activeEffectsPerSegment;
-
+ 
     // Check if the effect is a predefined one
     bool isPresetEffect(const Effect &effect) const
     {
@@ -41,6 +45,9 @@ public:
         for (int segmentID : DEFAULT_SEGMENT_IDS)
         {
             Effect currentEffectOnSegment = Effect(segmentID);
+            //Check if activeEffectsPerSegment[segmentID] has a value
+            bool stripHasAnActiveEffect = activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end();
+
             if (!isPresetEffect(currentEffectOnSegment))
             {
                 // p.println("Checking segment " + String(segmentID) + " for custom effects...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
@@ -50,9 +57,9 @@ public:
                     p.println("Adding custom effect [" + String(currentEffectOnSegment.name) + "] to the back of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     queue.push_back(currentEffectOnSegment);
                 }
-                else if (!strip.isUpdating() && queue.back().checksum != currentEffectOnSegment.checksum)
+                else if (!stripHasAnActiveEffect && !strip.isUpdating() && queue.back().checksum != currentEffectOnSegment.checksum)
                 {
-                    p.println("Current seg(" + String(segmentID) + ") checksum: " + String(currentEffectOnSegment.checksum) + ", last seg(" + String(segmentID) + ") checksum: " + String(queue.back().checksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+                    p.println("Seg(" + String(segmentID) + ") checksum: " + String(currentEffectOnSegment.checksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     // p.println("Replacing custom effect [" + String(currentEffectOnSegment.name) + "] in the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
                     queue.pop_back();
                     queue.push_back(currentEffectOnSegment);
@@ -127,24 +134,29 @@ public:
         {
             int segmentID = pair.first;
             std::deque<Effect> &queue = pair.second;
-
-            if (queue.empty())
+            //Check if the queue is empty or if the current effect is not a preset
+            if(queue.empty() || !isPresetEffect(queue.front()))
+            {
+                //p.println("Queue on segment " + String(segmentID) + " is empty empty or " + String(queue.front().name) + " is not a preset, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
                 continue;
-
+            }
             // Process the first effect in the queue if it's not already running
             Effect *currentEffect = &queue.front();
-            bool isPreset = isPresetEffect(currentEffect);
-            bool active = (currentTime - currentEffect->startTime < currentEffect->runTime);
+
+            bool triggering = currentEffect->checkTrigger();
+            p.println("Effect [" + String(currentEffect->name) + "] on segment " + String(segmentID) + " is triggering: " + String(triggering), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            //p.println("Brake Status: " + String(triggering));
+            bool active = triggering || (currentTime - currentEffect->startTime < currentEffect->runTime);
             bool expired = (currentTime - currentEffect->startTime >= currentEffect->runTime);
 
             // Check if the effect is a preset and if should be running. If so, start it
-            if (isPreset && active && !currentEffect->isRunning)
+            if (active && !currentEffect->isRunning)
             {
                 p.println("Starting preset effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
                 activeEffectsPerSegment[segmentID] = currentEffect;
                 currentEffect->start();
             }
-            else if (isPreset && expired)
+            else if (expired && !triggering)
             {
                 p.println("[" + String(currentEffect->name) + "] on segment " + String(segmentID) + " has expired, stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
                 // Move to the next effect if the current one has finished
@@ -158,14 +170,14 @@ public:
                 {
                     p.println("Queue on segment " + String(segmentID) + " is empty, starting off effect...", ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
                     Effect offEffect = effects.off;
-                    offEffect.start();
+                    offEffect.start(segmentID);
                 }
                 else
                 {
                     currentEffect = &queue.front();
                     p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
-                    currentEffect->start();
+                    currentEffect->start(segmentID);
                     activeEffectsPerSegment[segmentID] = currentEffect;
                 }
             }

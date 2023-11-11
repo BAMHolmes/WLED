@@ -19,7 +19,6 @@ class Subaru : public Usermod
 
 {
 private:
-  SubaruTelemetry ST;
   QueueManager queueManager;
 
   // Usermod variable declarations for storing segment indices
@@ -128,8 +127,7 @@ private:
 public:
   void setup()
   {
-    ST.setupSegments();
-    effects.off.triggerEffect();
+    effects.off.start();
     Wire.begin(SubaruTelemetry::SDA_PIN, SubaruTelemetry::SCL_PIN);
     writePCF8575(0x0000); // Configure all pins as outputs initially
     Serial.println("All outputs written to PCF8575");
@@ -162,7 +160,7 @@ public:
 
   void loop()
   {
-    if (!ST.checkSegmentIntegrity() || strip.isUpdating())
+    if (!effects.checkSegmentIntegrity() || strip.isUpdating())
       return;
 
     /**
@@ -183,7 +181,14 @@ public:
     if(ST.brakeEngaged()){
         queueManager.addEffectToQueue(effects.brake); // 10 seconds run time, 0.5 seconds transition
     }
-    
+
+    /**
+     * REVERSE EFFECT SEQUENCE
+     * **********************/
+    if(ST.reverseEngaged()){
+      queueManager.addEffectToQueue(effects.reverse); // 10 seconds run time, 0.5 seconds transition
+    }
+
     /**
      * LEFT EFFECT SEQUENCE
      **********************/
@@ -225,6 +230,7 @@ public:
     if(ST.ignitionOn()){
       queueManager.addEffectToQueue(effects.ignition); // 10 seconds run time, 0.5 seconds transition
     }
+
     queueManager.processQueue();
   }
 };
