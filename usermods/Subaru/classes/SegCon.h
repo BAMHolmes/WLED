@@ -3,10 +3,11 @@
 
 #include "wled.h"
 
-#define REAR_SEGMENT 0
-#define LEFT_SEGMENT 1
-#define FRONT_SEGMENT 2
-#define RIGHT_SEGMENT 3
+#define RIGHT_SEGMENT 0
+#define FRONT_SEGMENT 1
+#define LEFT_SEGMENT 2
+#define REAR_SEGMENT 3
+
 #define UNIFIED_SEGMENT 4
 
 

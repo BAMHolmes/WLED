@@ -467,7 +467,7 @@ void handleSettingsSet(AsyncWebServerRequest *request, byte subPage)
       #ifdef WLED_ADD_EEPROM_SUPPORT
       clearEEPROM();
       #endif
-      serveMessage(request, 200, F("All Settings erased."), F("Connect to WLED-AP to setup again"),255);
+      serveMessage(request, 200, F("All Settings erased."), F("Connect to Subaru-Ground-Effects to setup again"),255);
       doReboot = true; // may reboot immediately on dual-core system (race condition) which is desireable in this case
     }
 

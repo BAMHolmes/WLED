@@ -160,7 +160,8 @@ public:
 
   void loop()
   {
-    if (!effects.checkSegmentIntegrity() || strip.isUpdating())
+    
+    if (!bri || !enabled || !effects.checkSegmentIntegrity() || strip.isUpdating())
       return;
 
     /**

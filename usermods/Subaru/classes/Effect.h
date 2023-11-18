@@ -23,6 +23,7 @@ public:
     TriggerCondition triggerCondition;
     std::vector<int> segmentIDs;
     uint8_t mode;
+    bool reverse;
     int transitionSpeed;
     int interimTransitionSpeed;
     uint32_t colors[3];
@@ -54,6 +55,7 @@ public:
           intensity(255),
           checksum("") // Ensure checksum is calculated last
     {
+        reverse = false;
         interimTransitionSpeed = -1;
         checksum = calculateChecksum();
     }
@@ -62,11 +64,12 @@ public:
           triggerCondition(&SubaruTelemetry::trueStatus),
           segmentIDs(DEFAULT_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
+          reverse(false),
           transitionSpeed(INSTANT_TRANSITION),
           colors{0x000000, 0x000000, 0x000000},
           speed(255),
           fade(255),
-          power(true),
+          power(false),
           startTime(0),
           isRunning(false),
           runTime(0),
@@ -79,11 +82,12 @@ public:
         checksum = calculateChecksum();
     }
 
-    Effect(String n, TriggerCondition tc, std::vector<int> seg, uint8_t m, int ts, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, uint8_t i, bool pw = true)
+    Effect(String n, TriggerCondition tc, std::vector<int> seg, uint8_t m, bool rev, int ts, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, uint8_t i, bool pw = true)
         : name(n),
           triggerCondition(tc),
           segmentIDs(seg),
           mode(m),
+          reverse(rev),
           transitionSpeed(ts),
           colors{c1, 0x000000, 0x000000},
           speed(s),
@@ -180,6 +184,13 @@ public:
         intensity = i;
         return *this;
     }
+
+    Effect &setReverse(bool r)
+    {
+        reverse = r;
+        return *this;
+    }
+
     Effect &setChecksum()
     {
         checksum = calculateChecksum();
@@ -206,7 +217,7 @@ public:
         {
             p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
         }
-        p.println(".");
+        p.println(".", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
     }
     bool checkTrigger()
     {
@@ -242,6 +253,7 @@ public:
             strip.setMode(segmentID, mode);
             strip.setBrightness(255, true);
             SegCon::seg(segmentID).setOption(SEG_OPTION_ON, on);
+            SegCon::seg(segmentID).setOption(SEG_OPTION_REVERSED, reverse);
             SegCon::seg(segmentID).fade_out(fade);
             SegCon::seg(segmentID).intensity = intensity;
             SegCon::seg(segmentID).setColor(0, color1);
@@ -249,6 +261,7 @@ public:
             SegCon::seg(segmentID).setColor(2, color3);
             SegCon::seg(segmentID).setPalette(palette);
             SegCon::seg(segmentID).speed = speed;
+            SegCon::seg(segmentID).reverse = reverse;
             if(interimTransitionSpeed != -1){
                 SegCon::seg(segmentID).startTransition(interimTransitionSpeed);
                 interimTransitionSpeed = -1;
@@ -276,6 +289,8 @@ private:
     {
         // Calculate the checksum, a string of the "mode", "colors", "speed", "palette", and "power" combined.
         //  This is used to identify the effect and prevent duplicates from being added to the queue
+        // A single checksum should be generated from each segmentID
+
         String checksum = String(mode);
         checksum += ":" + String(name);
         checksum += ":" + String(colors[0]);
@@ -372,7 +387,7 @@ public:
             .setTriggerCondition(&SubaruTelemetry::ignitionStatus)
             .setSegmentIDs(DEFAULT_SEGMENT_IDS)
             .setMode(FX_MODE_LOADING)
-            .setTransitionSpeed(INSTANT_TRANSITION)
+            .setTransitionSpeed(MEDIUM_TRANSITION)
             .setColor(0xFFC68C)
             .setSpeed(225)
             .setFade(255)
@@ -384,8 +399,9 @@ public:
         lock = Effect("Car Locked")
             .setTriggerCondition(&SubaruTelemetry::lockedStatus)
             .setSegmentIDs(DEFAULT_SEGMENT_IDS)
-            .setMode(FX_MODE_BLINK)
-            .setTransitionSpeed(INSTANT_TRANSITION)
+            .setMode(FX_MODE_GRADIENT)
+            .setReverse(false)
+            .setTransitionSpeed(SLOW_TRANSITION)
             .setColor(0xFF0000)
             .setSpeed(170)
             .setFade(255)
@@ -397,15 +413,30 @@ public:
         unlock = Effect("Car Unlocked")
             .setTriggerCondition(&SubaruTelemetry::unlockedStatus)
             .setSegmentIDs(DEFAULT_SEGMENT_IDS)
-            .setMode(FX_MODE_BLINK)
-            .setTransitionSpeed(INSTANT_TRANSITION)
-            .setColor(0xFFAA00)
+            .setMode(FX_MODE_GRADIENT)
+            .setReverse(true)
+            .setTransitionSpeed(MEDIUM_TRANSITION)
+            .setColor(0x39E75F)
             .setSpeed(170)
             .setFade(255)
             .setRunTime(3000)
             .setPalette(0)
             .setIntensity(128)
             .setChecksum();
+
+        // unlock = Effect("Car Unlocked")
+        //     .setTriggerCondition(&SubaruTelemetry::unlockedStatus)
+        //     .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+        //     .setMode(FX_MODE_METEOR)
+        //     .setReverse(true)
+        //     .setTransitionSpeed(MEDIUM_TRANSITION)
+        //     .setColor(0xFFAA00)
+        //     .setSpeed(170)
+        //     .setFade(255)
+        //     .setRunTime(3000)
+        //     .setPalette(63)
+        //     .setIntensity(128)
+        //     .setChecksum();
 
         off = Effect("Segment Off")
             .setTriggerCondition(&SubaruTelemetry::ignitionStatus)
@@ -475,12 +506,13 @@ Effect::Effect(int seg)
     Segment &segment = SegCon::seg(seg);
     segmentIDs.push_back(seg);
     mode = segment.mode;
+    reverse = segment.reverse;
     transitionSpeed = strip.getTransition();
     speed = segment.speed;
     fade = 255;
-    power = segment.getOption(SEG_OPTION_ON);
+    power = segment.on;
     startTime = 0;
-    isRunning = false;
+    isRunning = true;
     runTime = 0;
     palette = segment.palette;
     intensity = segment.intensity;

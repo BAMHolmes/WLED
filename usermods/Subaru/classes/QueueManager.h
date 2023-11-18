@@ -46,7 +46,7 @@ public:
         {
             Effect currentEffectOnSegment = Effect(segmentID);
             //Check if activeEffectsPerSegment[segmentID] has a value
-            bool stripHasAnActiveEffect = activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end();
+            bool stripHasAnActivePresetEffect = (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end()) && isPresetEffect(activeEffectsPerSegment[segmentID]);
 
             if (!isPresetEffect(currentEffectOnSegment))
             {
@@ -57,7 +57,7 @@ public:
                     p.println("Adding custom effect [" + String(currentEffectOnSegment.name) + "] to the back of the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     queue.push_back(currentEffectOnSegment);
                 }
-                else if (!stripHasAnActiveEffect && !strip.isUpdating() && queue.back().checksum != currentEffectOnSegment.checksum)
+                else if (!stripHasAnActivePresetEffect && !strip.isUpdating() && queue.back().checksum != currentEffectOnSegment.checksum)
                 {
                     p.println("Seg(" + String(segmentID) + ") checksum: " + String(currentEffectOnSegment.checksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                     // p.println("Replacing custom effect [" + String(currentEffectOnSegment.name) + "] in the queue on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
@@ -153,13 +153,14 @@ public:
             if (active && !currentEffect->isRunning)
             {
                 p.println("Starting preset effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
-                activeEffectsPerSegment[segmentID] = currentEffect;
+                activeEffectsPerSegment[segmentID] = &currentEffect->setPower(true);
                 currentEffect->start();
             }
             else if (expired && !triggering)
             {
                 p.println("[" + String(currentEffect->name) + "] on segment " + String(segmentID) + " has expired, stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
                 // Move to the next effect if the current one has finished
+                auto currentEffectCache = currentEffect;
                 currentEffect->stop();
                 queue.pop_front();
                 // Remove the currentEffect from activeEffectsPerSegment
@@ -170,17 +171,24 @@ public:
                 {
                     p.println("Queue on segment " + String(segmentID) + " is empty, starting off effect...", ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
  
-                    Effect offEffect = effects.off;
+                    Effect offEffect = effects.off.setPower(false).setColor(0x000000);
                     offEffect.start(segmentID);
                 }
                 else
                 {
-
-                    currentEffect = &queue.front().setInterimTransitionSpeed(currentEffect->transitionSpeed);
-                    p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
+                    Serial.println("Stopping checksum: " + String(currentEffect->checksum) + ".");
+                    currentEffect = &queue.front().setInterimTransitionSpeed(currentEffectCache->transitionSpeed);
+                    if(!currentEffect->power){
+                        currentEffect = &currentEffectCache->setName("Shut Down").setPower(false).setChecksum();
+                        activeEffectsPerSegment.erase(segmentID);
+                    }else{
+                        activeEffectsPerSegment[segmentID] = currentEffect;
+                    }
+                    //p.println("Starting checksum: " + String(currentEffect->checksum), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+                    //p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
                     currentEffect->start(segmentID);
-                    activeEffectsPerSegment[segmentID] = currentEffect;
+                    
                 }
             }
         }
