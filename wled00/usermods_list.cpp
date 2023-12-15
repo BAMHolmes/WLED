@@ -153,6 +153,10 @@
 #include "../usermods/audioreactive/audio_reactive.h"
 #endif
 
+#ifdef SUBARU
+#include "../usermods/Subaru/Subaru.h"
+#endif
+
 #ifdef USERMOD_ANALOG_CLOCK
 #include "../usermods/Analog_Clock/Analog_Clock.h"
 #endif
@@ -225,7 +229,7 @@ void registerUsermods()
    */
   //usermods.add(new MyExampleUsermod());
 #ifdef USERMOD_BATTERY
-  usermods.add(new UsermodBattery("Battery", false));  // WLEDMM
+  usermods.add(new UsermodBattery("Battery", true));
 #endif
 
 #ifdef USERMOD_DALLASTEMPERATURE
@@ -293,7 +297,7 @@ void registerUsermods()
 #endif
 
 #ifdef USERMOD_RTC
-  usermods.add(new RTCUsermod("RTC", false));  //WLEDMM
+  usermods.add(new RTCUsermod("RTC", true));
 #endif
 
 #ifdef USERMOD_ELEKSTUBE_IPS
@@ -352,6 +356,11 @@ void registerUsermods()
   usermods.add(new AudioReactive());
 #endif
 
+#ifdef SUBARU
+  usermods.add(new Subaru());
+#endif
+
+
 #ifdef USERMOD_ANALOG_CLOCK
   usermods.add(new AnalogClockUsermod());
 #endif
@@ -385,7 +394,7 @@ void registerUsermods()
 #endif
 
 #ifdef USERMOD_MCUTEMP
-  usermods.add(new mcuTemp("MCUTemp", false));
+  usermods.add(new mcuTemp("MCUTemp", true));
 #endif
 
 //#ifdef USERMOD_INTERNAL_TEMPERATURE
