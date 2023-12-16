@@ -3,10 +3,10 @@
 #include "wled.h"
 
 #ifdef ARDUINO_ARCH_ESP32
-
 #include <driver/i2s.h>
 #include <driver/adc.h>
-
+#include <algorithm>
+#include <cmath>
 #endif
 
 #if defined(ARDUINO_ARCH_ESP32) && (defined(WLED_DEBUG) || defined(SR_DEBUG))
@@ -214,6 +214,9 @@ static uint8_t averageByRMS = false;                      // false: use mean val
 #else
 static uint8_t averageByRMS = true;                       // false: use mean value, true: use RMS (root mean squared). use better method on fast MCUs.
 #endif
+static float lowPassThresh = 0.0f;                         // low-pass filter floor value. 0.0f = 0 Hz
+static float lowPassFactor = 1.0f;
+static float lowPassCeil = 0.99f;
 static uint8_t freqDist = 0;                              // 0=old 1=rightshift mode
 
 
@@ -430,7 +433,47 @@ static void runDCBlocker(uint_fast16_t numSamples, float *sampleBuffer) {
     sampleBuffer[i] = filtered;
   }  
 }
+// Low-Pass filter
+static void runLowPassFilter(uint_fast16_t numSamples, float *sampleBuffer) {
+  float filterR = max(0.0f, min(lowPassCeil, 1.0f));  // Ensure filterR is between 0.0 and 1.0
+  static float ym1 = 0.0f;
 
+  float enhancementFactor = max(0.0f, float(lowPassFactor)); // Ensure factor is non-negative
+  float threshold = max(0.1f, float(lowPassThresh)); // Prevent division by zero or negative threshold
+  float dynamicMultiplier = 0.0f;
+  float dampingFactor = 0.1f; // Damping factor to stabilize the system
+
+  for (unsigned i = 0; i < numSamples; i++) {
+    float value = sampleBuffer[i];
+    float filtered = filterR * ym1 + (1.0f - filterR) * value;
+    
+    ym1 = filtered;
+
+    if (filtered > 0 && filtered < threshold) {
+
+      dynamicMultiplier = enhancementFactor * exp(-filtered / threshold);
+      // Apply the dynamic multiplier safely
+      if (std::isfinite(dynamicMultiplier)) {
+        filtered *= (1.0 + dynamicMultiplier);
+      }
+    }
+    
+
+    // Update ym1 with damping applied
+
+    sampleBuffer[i] = filtered;
+  }
+
+  // Print data at the end of processing to reduce stack usage
+  // Serial.print("enhancementFactor: ");
+  // Serial.print(enhancementFactor);
+  // Serial.print(", threshold: ");
+  // Serial.print(threshold);
+  // Serial.print(", dynamicMultiplier: ");
+  // Serial.print(dynamicMultiplier);
+  // Serial.print(", filtered: ");
+  // Serial.println(ym1);
+}
 //
 // FFT main task
 //
@@ -534,7 +577,9 @@ void FFTcode(void * parameter)
    if ((useInputFilter > 0) && (useInputFilter < 99)) {
       switch(useInputFilter) {
         case 1: runMicFilter(samplesFFT, vReal); break;                   // PDM microphone bandpass
-        case 2: runDCBlocker(samplesFFT, vReal); break;                   // generic Low-Cut + DC blocker (~40hz cut-off)
+        //ARH:
+        case 2: runLowPassFilter(samplesFFT, vReal); break;               // generic Low-Pass filter (~100hz cut-off)
+        //case 2: runDCBlocker(samplesFFT, vReal); break;                   // generic Low-Cut + DC blocker (~40hz cut-off)
       }
     }
 
@@ -1755,8 +1800,9 @@ class AudioReactive : public Usermod {
         periph_module_reset(PERIPH_I2S0_MODULE);   // not possible on -C3
       #endif
       delay(100);         // Give that poor microphone some time to setup.
-
-      useInputFilter = 2; // default: DC blocker
+      //ARH:
+      useInputFilter = 2;
+      //useInputFilter = 2; // default: DC blocker
       switch (dmType) {
       #if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3)
         // stub cases for not-yet-supported I2S modes on other ESP32 chips
@@ -1802,14 +1848,18 @@ class AudioReactive : public Usermod {
         case 5:
           DEBUGSR_PRINT(F("AR: I2S PDM Microphone - ")); DEBUGSR_PRINTLN(F(I2S_PDM_MIC_CHANNEL_TEXT));
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE, 1.0f/4.0f);
-          useInputFilter = 1;  // PDM bandpass filter - this reduces the noise floor on SPM1423 from 5% Vpp (~380) down to 0.05% Vpp (~5)
+          //ARH:
+          useInputFilter = 2;
+          //useInputFilter = 1;  // PDM bandpass filter - this reduces the noise floor on SPM1423 from 5% Vpp (~380) down to 0.05% Vpp (~5)
           delay(100);
           if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin);
           break;
         case 51:
           DEBUGSR_PRINT(F("AR: Legacy PDM Microphone - ")); DEBUGSR_PRINTLN(F(I2S_PDM_MIC_CHANNEL_TEXT));
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE, 1.0f);
-          useInputFilter = 1;  // PDM bandpass filter
+          //ARH:
+          useInputFilter = 0;
+          //useInputFilter = 1;  // PDM bandpass filter
           delay(100);
           if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin);
           break;
@@ -1854,7 +1904,9 @@ class AudioReactive : public Usermod {
         case 0:
         default:
           DEBUGSR_PRINTLN(F("AR: Analog Microphone (left channel only)."));
-          useInputFilter = 1;  // PDM bandpass filter seems to work well for analog, too
+          //ARH:
+          useInputFilter = 2;
+          //useInputFilter = 1;  // PDM bandpass filter seems to work well for analog, too
           audioSource = new I2SAdcSource(SAMPLE_RATE, BLOCK_SIZE);
           delay(100);
           if (audioSource) audioSource->initialize(audioPin);
@@ -2549,6 +2601,10 @@ class AudioReactive : public Usermod {
       poweruser[F("micLev")] = micLevelMethod;
       poweruser[F("freqDist")] = freqDist;
       poweruser[F("freqRMS")] = averageByRMS;
+      poweruser[F("lowPassFactor")] = lowPassFactor;
+      poweruser[F("lowPassThresh")] = lowPassThresh;
+
+      poweruser[F("lowPassCeil")] = lowPassCeil;
 
       JsonObject freqScale = top.createNestedObject("frequency");
       freqScale[F("scale")] = FFTScalingMode;
@@ -2601,8 +2657,11 @@ class AudioReactive : public Usermod {
       if (dmType == 51) dmType = SR_DMTYPE;  // MCU does not support legacy PDM
       #endif
     #else
-      if (dmType == 5) useInputFilter = 1;      // enable filter for PDM
-      if (dmType == 51) useInputFilter = 1;     // switch on filter for legacy PDM    
+      //ARH:
+      if (dmType == 5) useInputFilter = 2;      // enable filter for PDM
+      if (dmType == 51) useInputFilter = 2;     // switch on filter for legacy PDM   
+      //if (dmType == 5) useInputFilter = 1;      // enable filter for PDM
+      //if (dmType == 51) useInputFilter = 1;     // switch on filter for legacy PDM    
     #endif
 
       configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][0], i2ssdPin);
@@ -2620,6 +2679,9 @@ class AudioReactive : public Usermod {
       configComplete &= getJsonValue(top["experiments"][F("micLev")], micLevelMethod);
       configComplete &= getJsonValue(top["experiments"][F("freqDist")], freqDist);
       configComplete &= getJsonValue(top["experiments"][F("freqRMS")],  averageByRMS);
+      configComplete &= getJsonValue(top["experiments"][F("lowPassCeil")], lowPassCeil);
+      configComplete &= getJsonValue(top["experiments"][F("lowPassFactor")], lowPassFactor);
+      configComplete &= getJsonValue(top["experiments"][F("lowPassThresh")], lowPassThresh);
 
       configComplete &= getJsonValue(top["frequency"][F("scale")], FFTScalingMode);
       configComplete &= getJsonValue(top["frequency"][F("profile")], pinkIndex);  //WLEDMM
@@ -2726,6 +2788,11 @@ class AudioReactive : public Usermod {
       oappend(SET_F("addOption(dd,'Off  (⎌)',0);"));
       oappend(SET_F("addOption(dd,'On',1);"));
       oappend(SET_F("addInfo('AudioReactive:experiments:freqRMS',1,'☾');"));
+
+      oappend(SET_F("addInfo('AudioReactive:experiments:lowPassCeil',1,'(f to Hz)');"));
+      oappend(SET_F("addInfo('AudioReactive:experiments:lowPassFactor',1,'(f to Hz)');"));
+      oappend(SET_F("addInfo('AudioReactive:experiments:lowPassThresh',1,'(f to Hz)');"));
+      
 
       oappend(SET_F("dd=addDropdown('AudioReactive','dynamics:limiter');"));
       oappend(SET_F("addOption(dd,'Off',0);"));
