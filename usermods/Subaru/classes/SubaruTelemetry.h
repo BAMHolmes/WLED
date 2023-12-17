@@ -18,6 +18,7 @@ private:
     bool doors_locked = false;
     bool car_in_reverse = false;
     bool ignition = true;
+    bool relay = true;
 
     bool brake_pedal_previous_state = false;
     bool reverse_previous_state = false;
@@ -38,6 +39,29 @@ private:
     bool ignition_changed = false;
     
 
+
+    
+
+
+public:
+    // Declare all the variables and members that need to be initialized
+
+    /**
+     *  Constructor method SubaruTelemetry()
+     */
+
+    SubaruTelemetry()
+    {
+        //readTelemetry();
+    }
+    void writePCF8575(uint16_t data)
+    {
+        Wire.beginTransmission(PCF8575_ADDRESS); // Begin transmission to PCF8575
+        Wire.write(data & 0xFF);                                  // Write low byte
+        Wire.write(data >> 8);                                    // Write high byte
+        Wire.endTransmission();                                   // End transmission
+    }
+
     uint16_t readPCF8575()
     {
         uint16_t data = 0;
@@ -52,20 +76,48 @@ private:
         }
         return data;
     }
-
-
-public:
-    // Declare all the variables and members that need to be initialized
-
+    void initializePins(){
+        Wire.begin(SDA_PIN, SCL_PIN);
+        writePCF8575(0x0000); // Configure all pins as outputs initially
+        writePCF8575(0x0200); // Pull pin 9 high - turns on the LED relay
+    }
     /**
-     *  Constructor method SubaruTelemetry()
+     * A method that pulls PIN 9 low and retains the state of all other pins
      */
 
-    SubaruTelemetry()
+    void turnOffLEDRelay()
     {
-        //readTelemetry();
+        uint16_t pinState = readPCF8575(); // Read the state of all pins
+        pinState &= 0xFDFF;                // Set pin 9 low
+        writePCF8575(pinState);            // Write the new state to the PCF8575
     }
 
+    /**
+     * A method that pulls PIN 9 high and retains the state of all other pins
+     */
+    void turnOnLEDRelay()
+    {
+        uint16_t pinState = readPCF8575(); // Read the state of all pins
+        pinState |= 0x0200;                // Set pin 9 high
+        writePCF8575(pinState);            // Write the new state to the PCF8575
+    }
+
+    /**
+     * A method that checks to see if PIN 9 is high, returns true if it is
+     */
+    bool LEDRelayOn()
+    {
+        return relay;   // Return true if pin 9 is high
+    }
+
+    /**
+     * A method that checks to see if LEDRelayOn() is true, if it is return true, if not, turnOnLEDRelay then return true
+    */
+    void ensureRelayOn(){
+        if(!LEDRelayOn()){
+            turnOnLEDRelay();
+        }
+    }
     static const int SDA_PIN = 21; // Make these constants static
     static const int SCL_PIN = 22;
     static const int PCF8575_ADDRESS = 0x20;
@@ -119,6 +171,7 @@ public:
         doors_locked = EXT_PIN_6;
         doors_unlocked = EXT_PIN_7;
         ignition = EXT_PIN_8;
+        relay = EXT_PIN_9;
 
         //Set all the "changed" variables depending on the previous state
         brake_pedal_changed = brake_pedal_pressed != brake_pedal_previous_state;

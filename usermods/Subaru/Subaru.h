@@ -4,17 +4,16 @@
 #include <Wire.h>
 #include "classes/QueueManager.h"
 
-const char UM_FRONT_SEGMENT_START[] PROGMEM = "frontSegmentStart";
-const char UM_FRONT_SEGMENT_END[] PROGMEM = "frontSegmentEnd";
-const char UM_LEFT_SEGMENT_START[] PROGMEM = "leftSegmentStart";
-const char UM_LEFT_SEGMENT_END[] PROGMEM = "leftSegmentEnd";
-const char UM_RIGHT_SEGMENT_START[] PROGMEM = "rightSegmentStart";
-const char UM_RIGHT_SEGMENT_END[] PROGMEM = "rightSegmentEnd";
-const char UM_REAR_SEGMENT_START[] PROGMEM = "rearSegmentStart";
-const char UM_REAR_SEGMENT_END[] PROGMEM = "rearSegmentEnd";
-const char UM_UNIFIED_SEGMENT_START[] PROGMEM = "unifiedSegmentStart";
-const char UM_UNIFIED_SEGMENT_END[] PROGMEM = "unifiedSegmentEnd";
-
+const char UM_REAR_SEGMENT_LENGTH[] PROGMEM = "rearSegmentLength";
+const char UM_RIGHT_SEGMENT_LENGTH[] PROGMEM = "rightSegmentLength";
+const char UM_LEFT_SEGMENT_LENGTH[] PROGMEM = "leftSegmentLength";
+const char UM_FRONT_SEGMENT_LENGTH[] PROGMEM = "frontSegmentLength";
+const char UM_REAR_LEFT_SEGMENT_LENGTH[] PROGMEM = "rearLeftSegmentLength";
+const char UM_REAR_RIGHT_SEGMENT_LENGTH[] PROGMEM = "rearRightSegmentLength";
+const char UM_FRONT_RIGHT_SEGMENT_LENGTH[] PROGMEM = "frontRightSegmentLength";
+const char UM_FRONT_LEFT_SEGMENT_LENGTH[] PROGMEM = "frontLeftSegmentLength";
+const char UM_SCOOP_SEGMENT_LENGTH[] PROGMEM = "scoopSegmentLength";
+const char UM_GRILLE_SEGMENT_LENGTH[] PROGMEM = "grilleSegmentLength";
 class Subaru : public Usermod
 
 {
@@ -32,16 +31,17 @@ private:
     JsonObject top = root.createNestedObject(FPSTR(_name));
     top[FPSTR(_enabled)] = enabled;
 
-    top[FPSTR(UM_FRONT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.frontStart;
-    top[FPSTR(UM_FRONT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.frontEnd;
-    top[FPSTR(UM_LEFT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.leftStart;
-    top[FPSTR(UM_LEFT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.leftEnd;
-    top[FPSTR(UM_RIGHT_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.rightStart;
-    top[FPSTR(UM_RIGHT_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.rightEnd;
-    top[FPSTR(UM_REAR_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.rearStart;
-    top[FPSTR(UM_REAR_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.rearEnd;
-    top[FPSTR(UM_UNIFIED_SEGMENT_START)] = SUBARU_SEGMENT_CONFIG.unifiedStart;
-    top[FPSTR(UM_UNIFIED_SEGMENT_END)] = SUBARU_SEGMENT_CONFIG.unifiedEnd;
+    top[FPSTR(UM_REAR_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.rearLength;
+    top[FPSTR(UM_LEFT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.leftLength;
+    top[FPSTR(UM_RIGHT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.rightLength;
+    top[FPSTR(UM_FRONT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.frontLength;
+    top[FPSTR(UM_REAR_LEFT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.rearLeftLength;
+    top[FPSTR(UM_REAR_RIGHT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.rearRightLength;
+    top[FPSTR(UM_FRONT_RIGHT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.frontRightLength;
+    top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.frontLeftLength;
+    top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.scoopLength;
+    top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.grilleLength;
+
   }
 
   bool readFromConfig(JsonObject &root) override
@@ -50,16 +50,16 @@ private:
     bool configComplete = !top.isNull();
 
     configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled);
-    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.frontStart);
-    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.frontEnd);
-    configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.leftStart);
-    configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.leftEnd);
-    configComplete &= getJsonValue(top[FPSTR(UM_RIGHT_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.rightStart);
-    configComplete &= getJsonValue(top[FPSTR(UM_RIGHT_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.rightEnd);
-    configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.rearStart);
-    configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.rearEnd);
-    configComplete &= getJsonValue(top[FPSTR(UM_UNIFIED_SEGMENT_START)], SUBARU_SEGMENT_CONFIG.unifiedStart);
-    configComplete &= getJsonValue(top[FPSTR(UM_UNIFIED_SEGMENT_END)], SUBARU_SEGMENT_CONFIG.unifiedEnd);
+    configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.leftLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_RIGHT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rightLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_REAR_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearLeftLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_REAR_RIGHT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearRightLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_RIGHT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontRightLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontLeftLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.scoopLength);
+    configComplete &= getJsonValue(top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.grilleLength);
 
     if (configComplete)
     {
@@ -81,44 +81,44 @@ private:
 
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_FRONT_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Front segment start');"));
+    oappend(String(FPSTR(UM_REAR_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Rear length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_FRONT_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Front segment end');"));
+    oappend(String(FPSTR(UM_LEFT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Left length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_LEFT_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Left segment start');"));
+    oappend(String(FPSTR(UM_RIGHT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Right length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_LEFT_SEGMENT_END)).c_str());
-    oappend(SET_F("', 'Left segment end');"));
+    oappend(String(FPSTR(UM_FRONT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Front length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_RIGHT_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Right segment start');"));
+    oappend(String(FPSTR(UM_REAR_LEFT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Rear-left length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_RIGHT_SEGMENT_END)).c_str());
-    oappend(SET_F("', 'Right segment end');"));
+    oappend(String(FPSTR(UM_REAR_RIGHT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Rear-right length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_REAR_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Rear segment start');"));
+    oappend(String(FPSTR(UM_FRONT_RIGHT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Front-right segment start');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_REAR_SEGMENT_END)).c_str());
-    oappend(SET_F("', 'Rear segment end');"));
+    oappend(String(FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Front-left segment length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_UNIFIED_SEGMENT_START)).c_str());
-    oappend(SET_F("', 'Unified segment start');"));
+    oappend(String(FPSTR(UM_SCOOP_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Scoop segment length');"));
     oappend(SET_F("addTextInput('"));
     oappend(configName.c_str());
-    oappend(String(FPSTR(UM_UNIFIED_SEGMENT_END)).c_str());
-    oappend(SET_F("', 'Unified segment end');"));
+    oappend(String(FPSTR(UM_GRILLE_SEGMENT_LENGTH)).c_str());
+    oappend(SET_F("', 'Grille segment legth');"));
 
     // Repeat for LEFT, RIGHT, and REAR segments...
   }
@@ -128,14 +128,14 @@ public:
   void setup()
   {
     effects.off.start();
-    Wire.begin(SubaruTelemetry::SDA_PIN, SubaruTelemetry::SCL_PIN);
-    writePCF8575(0x0000); // Configure all pins as outputs initially
+    ST.initializePins();
     Serial.println("All outputs written to PCF8575");
   }
+
+
   /**
    * A method that checks if each segment is assigned to the correct LED start and end. If a change/discrepancy is detected, run setup()
    */
-
   void printSegmentDetails() {}
 
   void printDetailsPeriodically()
@@ -148,13 +148,7 @@ public:
       lastPrintTime = millis();
     }
   }
-  void writePCF8575(uint16_t data)
-  {
-    Wire.beginTransmission(SubaruTelemetry::PCF8575_ADDRESS); // Begin transmission to PCF8575
-    Wire.write(data & 0xFF);                                  // Write low byte
-    Wire.write(data >> 8);                                    // Write high byte
-    Wire.endTransmission();                                   // End transmission
-  }
+
 
 
 

@@ -200,6 +200,7 @@ public:
     {
         if (segmentIDs.size() > 0)
         {
+            ST.ensureRelayOn();
             triggerEffect(segmentID); // Actual function to start the effect
             isRunning = true;
         }

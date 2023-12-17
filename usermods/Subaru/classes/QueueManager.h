@@ -8,21 +8,32 @@
 #include <vector>
 #include "Effect.h"
 #include "ColorPrint.h"
-
+#include <functional>
+#include <chrono>
+#include <thread>
 /**
  * @brief Class for managing the queue of effects for each segment.
  * 
  */
 class QueueManager
 {
+
 public: 
    QueueManager(){
         effects.printAllChecksums();
+        for (int segmentID : DEFAULT_GROUND_SEGMENT_IDS)
+        {
+            segmentPowerStatus[segmentID] = false;
+        }    
     }
 private:
     std::map<int, std::deque<Effect>> effectsPerSegment;
     std::map<int, Effect *> activeEffectsPerSegment;
- 
+    std::unordered_map<int, bool> segmentPowerStatus;
+    static std::chrono::steady_clock::time_point powerOffTimer;
+    unsigned long lastSegmentCheckTime = 0;
+    const unsigned long powerOffDelay = 30000; // Delay in milliseconds (30 seconds)
+
     // Check if the effect is a predefined one
     bool isPresetEffect(const Effect &effect) const
     {
@@ -41,8 +52,12 @@ public:
      */
     void checkSegmentsAndUpdate()
     {
+        bool allSegmentsPoweredOff = true;
+        unsigned long currentTime = millis();
+        unsigned long elapsedTime = currentTime - lastSegmentCheckTime;
+
         // Check each segment and if a custom effect is found that is not in the queue, enqueue it
-        for (int segmentID : DEFAULT_SEGMENT_IDS)
+        for (int segmentID : DEFAULT_GROUND_SEGMENT_IDS)
         {
             Effect currentEffectOnSegment = Effect(segmentID);
             //Check if activeEffectsPerSegment[segmentID] has a value
@@ -69,6 +84,24 @@ public:
             {
                 p.println("Segment " + String(segmentID) + " is running a preset effect:" + String(currentEffectOnSegment.name), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             }
+            bool isSegmentPoweredOn = currentEffectOnSegment.power;
+            segmentPowerStatus[segmentID] = isSegmentPoweredOn;
+            if (isSegmentPoweredOn)
+            {
+                allSegmentsPoweredOff = false;
+            }
+        }
+           // If all segments are powered off, start timer to trigger ST.turnOffRelay() after 30 seconds
+        if (allSegmentsPoweredOff) {
+            // If all segments are powered off, check if it's time to turn off the relay
+            if (elapsedTime >= powerOffDelay) {
+                // It's time to turn off the relay, call the turnOffRelay function here
+                ST.turnOffLEDRelay();
+                lastSegmentCheckTime = currentTime; // Reset the timer
+            }
+        } else {
+            // If any segment is powered back on, cancel the power off timer
+            lastSegmentCheckTime = currentTime;
         }
     }
 
@@ -155,8 +188,7 @@ public:
                 p.println("Starting preset effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
                 activeEffectsPerSegment[segmentID] = &currentEffect->setPower(true);
                 currentEffect->start();
-            }
-            else if (expired && !triggering)
+            }else if (expired && !triggering)
             {
                 p.println("[" + String(currentEffect->name) + "] on segment " + String(segmentID) + " has expired, stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
                 // Move to the next effect if the current one has finished
