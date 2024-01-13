@@ -532,6 +532,14 @@ void FFTcode(void * parameter)
 
     // get a fresh batch of samples from I2S
     if (audioSource) audioSource->getSamples(vReal, samplesFFT);
+    //Print all samples in vReal. 16 per line
+    for (int i = 0; i < samplesFFT; i++) {
+     Serial.print(vReal[i]);
+     Serial.print(" ");
+     if ((i % 16) == 15) Serial.println();
+    }
+    Serial.println();
+    Serial.println();
 
 #if defined(WLED_DEBUG) || defined(SR_DEBUG)|| defined(SR_STATS)
     // debug info in case that stack usage changes

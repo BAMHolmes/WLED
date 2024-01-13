@@ -4,12 +4,25 @@
 #include <FastLED.h>
 #include <const.h>
 #include <Wire.h>
+// #include <BLEDevice.h>
+// #include <BLEUtils.h>
+// #include <BLEScan.h>
+// #include <BLEAdvertisedDevice.h>
 
 #ifndef SUBARU_TELEMETRY_H
 #define SUBARU_TELEMETRY_H
+
+#define GROUND_LED_RELAY_PIN 12
+#define INTERIOR_LED_RELAY_PIN 14
+
 class SubaruTelemetry
 {
 private:
+
+    // std::vector<std::string> knownBLEAddresses = {"xx:xx:xx:xx:xx:xx", "yy:yy:yy:yy:yy:yy"}; // Replace with your device's BLE MAC addresses
+    // int RSSI_THRESHOLD = -70; // Set your RSSI threshold for proximity
+    // BLEScan* pBLEScan;
+
     bool left_indicator_on = false;
     bool right_indicator_on = false;
     bool brake_pedal_pressed = false;
@@ -53,6 +66,11 @@ public:
     SubaruTelemetry()
     {
         //readTelemetry();
+        pinMode(12, OUTPUT);
+        pinMode(14, OUTPUT);
+        // Serial.begin(115200);
+        // BLEDevice::init("");
+        // pBLEScan = BLEDevice::getScan();
     }
     void writePCF8575(uint16_t data)
     {
@@ -79,17 +97,26 @@ public:
     void initializePins(){
         Wire.begin(SDA_PIN, SCL_PIN);
         writePCF8575(0x0000); // Configure all pins as outputs initially
-        writePCF8575(0x0200); // Pull pin 9 high - turns on the LED relay
     }
-    /**
-     * A method that pulls PIN 9 low and retains the state of all other pins
-     */
 
-    void turnOffLEDRelay()
+    void turnOffGroundLEDRelay()
     {
-        uint16_t pinState = readPCF8575(); // Read the state of all pins
-        pinState &= 0xFDFF;                // Set pin 9 low
-        writePCF8575(pinState);            // Write the new state to the PCF8575
+        digitalWrite(GROUND_LED_RELAY_PIN, LOW);
+    }
+
+    void turnOnGroundLEDRelay()
+    {
+        digitalWrite(GROUND_LED_RELAY_PIN, HIGH);
+    }
+
+    void turnOffInteriorLEDRelay()
+    {
+        digitalWrite(INTERIOR_LED_RELAY_PIN, LOW);
+    }
+
+    void turnOnInteriorLEDRelay()
+    {
+        digitalWrite(INTERIOR_LED_RELAY_PIN, HIGH);
     }
 
     /**
@@ -97,6 +124,7 @@ public:
      */
     void turnOnLEDRelay()
     {
+        //Set GPIO PIN 12 to HIGH...
         uint16_t pinState = readPCF8575(); // Read the state of all pins
         pinState |= 0x0200;                // Set pin 9 high
         writePCF8575(pinState);            // Write the new state to the PCF8575

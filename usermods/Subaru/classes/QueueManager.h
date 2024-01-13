@@ -96,7 +96,7 @@ public:
             // If all segments are powered off, check if it's time to turn off the relay
             if (elapsedTime >= powerOffDelay) {
                 // It's time to turn off the relay, call the turnOffRelay function here
-                ST.turnOffLEDRelay();
+                ST.turnOffGroundLEDRelay();
                 lastSegmentCheckTime = currentTime; // Reset the timer
             }
         } else {
