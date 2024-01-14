@@ -136,9 +136,14 @@ static bool udpSamplePeak = false;   // Boolean flag for peak. Set at the same t
 static unsigned long timeOfPeak = 0; // time of last sample peak detection.
 volatile bool haveNewFFTResult = false; // flag to directly inform UDP sound sender when new FFT results are available (to reduce latency). Flag is reset at next UDP send
 
-static uint8_t fftResult[NUM_GEQ_CHANNELS]= {0};   // Our calculated freq. channel result table to be used by effects
-static float   fftCalc[NUM_GEQ_CHANNELS] = {0.0f}; // Try and normalize fftBin values to a max of 4096, so that 4096/16 = 256. (also used by dynamics limiter)
-static float   fftAvg[NUM_GEQ_CHANNELS] = {0.0f};  // Calculated frequency channel results, with smoothing (used if dynamics limiter is ON)
+static uint8_t fftResultLeft[NUM_GEQ_CHANNELS]= {0};   // Our calculated freq. channel result table to be used by effects
+static uint8_t fftResultRight[NUM_GEQ_CHANNELS]= {0};   // Our calculated freq. channel result table to be used by effects
+
+static float   fftCalcLeft[NUM_GEQ_CHANNELS] = {0.0f}; // Try and normalize fftBin values to a max of 4096, so that 4096/16 = 256. (also used by dynamics limiter)
+static float   fftCalcRight[NUM_GEQ_CHANNELS] = {0.0f}; // Try and normalize fftBin values to a max of 4096, so that 4096/16 = 256. (also used by dynamics limiter)
+
+static float   fftAvgLeft[NUM_GEQ_CHANNELS] = {0.0f};  // Calculated frequency channel results, with smoothing (used if dynamics limiter is ON)
+static float   fftAvgRight[NUM_GEQ_CHANNELS] = {0.0f};  // Calculated frequency channel results, with smoothing (used if dynamics limiter is ON)
 
 // TODO: probably best not used by receive nodes
 static float agcSensitivity = 128;            // AGC sensitivity estimation, based on agc gain (multAgc). calculated by getSensitivity(). range 0..255
@@ -205,6 +210,7 @@ const float agcSampleSmooth[AGC_NUM_PRESETS]  = {  1/12.f,   1/6.f,  1/16.f}; //
 // AGC presets end
 
 static AudioSource *audioSource = nullptr;
+//ARH: useInputFilter setting.
 static uint8_t useInputFilter = 0;                        // enables low-cut filtering. Applies before FFT.
 
 //WLEDMM add experimental settings
@@ -241,7 +247,7 @@ static volatile float    micReal_max2 = 0.0f;             // MicIn data max afte
 
 // some prototypes, to ensure consistent interfaces
 static float mapf(float x, float in_min, float in_max, float out_min, float out_max); // map function for float
-static float fftAddAvg(int from, int to);   // average of several FFT result bins
+static float fftAddAvg(int from, int to, int channel);   // average of several FFT result bins
 void FFTcode(void * parameter);      // audio processing task: read samples, run FFT, fill GEQ channels from FFT results
 static void runMicFilter(uint16_t numSamples, float *sampleBuffer);          // pre-filtering of raw samples (band-pass)
 static void postProcessFFTResults(bool noiseGateOpen, int numberOfChannels); // post-processing and post-amp of GEQ channels
@@ -309,7 +315,8 @@ static float sampleTime = 0;        // avg (blocked) time for reading I2S sample
 #endif
 
 // FFT Task variables (filtering and post-processing)
-static float   lastFftCalc[NUM_GEQ_CHANNELS] = {0.0f};                // backup of last FFT channels (before postprocessing)
+static float   lastFftCalcLeft[NUM_GEQ_CHANNELS] = {0.0f};                // backup of last FFT channels (before postprocessing)
+static float   lastFftCalcRight[NUM_GEQ_CHANNELS] = {0.0f};                // backup of last FFT channels (before postprocessing)
 
 #if !defined(CONFIG_IDF_TARGET_ESP32C3)
 // audio source parameters and constant
@@ -338,16 +345,24 @@ constexpr SRate_t SAMPLE_RATE = 18000;          // 18Khz; Physical sample time -
 
 // FFT Constants
 constexpr uint16_t samplesFFT = 512;            // Samples in an FFT batch - This value MUST ALWAYS be a power of 2
+constexpr uint16_t samplesFFTLeft = samplesFFT/2; // Samples in an FFT batch - This value MUST ALWAYS be a power of 2
+constexpr uint16_t samplesFFTRight = samplesFFT/2; // Samples in an FFT batch - This value MUST ALWAYS be a power of 2
+
 constexpr uint16_t samplesFFT_2 = 256;          // meaningfull part of FFT results - only the "lower half" contains useful information.
 // the following are observed values, supported by a bit of "educated guessing"
 //#define FFT_DOWNSCALE 0.65f                             // 20kHz - downscaling factor for FFT results - "Flat-Top" window @20Khz, old freq channels 
 //#define FFT_DOWNSCALE 0.46f                             // downscaling factor for FFT results - for "Flat-Top" window @22Khz, new freq channels
 #define FFT_DOWNSCALE 0.40f                             // downscaling factor for FFT results, RMS averaging
 #define LOG_256  5.54517744f                            // log(256)
-
+#define LEFT_CHANNEL 0
+#define RIGHT_CHANNEL 1
+#define MONO 2
 // These are the input and output vectors.  Input vectors receive computed results from FFT.
 static float vReal[samplesFFT] = {0.0f};       // FFT sample inputs / freq output -  these are our raw result bins
 static float vImag[samplesFFT] = {0.0f};       // imaginary parts
+//Declare vRealLeft and vRealRight to be half of the samplesFFT value.
+static float vRealLeft[samplesFFTLeft] = {0.0f}; // FFT sample inputs / freq output -  these are our raw result bins
+static float vRealRight[samplesFFTRight] = {0.0f};// FFT sample inputs / freq output -  these are our raw result bins
 #ifdef UM_AUDIOREACTIVE_USE_NEW_FFT
 static float windowWeighingFactors[samplesFFT] = {0.0f};
 #endif
@@ -390,26 +405,46 @@ static float mapf(float x, float in_min, float in_max, float out_min, float out_
 
 // compute average of several FFT result bins
 // linear average
-static float fftAddAvgLin(int from, int to) {
+static float fftAddAvgLin(int from, int to, int channel = MONO) {
   float result = 0.0f;
   for (int i = from; i <= to; i++) {
-    result += vReal[i];
+    switch (channel) {
+      case LEFT_CHANNEL:
+        result += vRealLeft[i];
+        break;
+      case RIGHT_CHANNEL:
+        result += vRealRight[i];
+        break;
+      default:
+        result += vReal[i];
+        break;
+    }
   }
   return result / float(to - from + 1);
 }
 // RMS average
-static float fftAddAvgRMS(int from, int to) {
+static float fftAddAvgRMS(int from, int to, int channel = MONO) {
   double result = 0.0;
   for (int i = from; i <= to; i++) {
-    result += vReal[i] * vReal[i];
+    switch (channel) {
+      case LEFT_CHANNEL:
+        result += vRealLeft[i] * vRealLeft[i];
+        break;
+      case RIGHT_CHANNEL:
+        result += vRealRight[i] * vRealRight[i];
+        break;
+      default:
+        result += vReal[i] * vReal[i];
+        break;
+    }
   }
   return sqrtf(result / float(to - from + 1));
 }
 
-static float fftAddAvg(int from, int to) {
+static float fftAddAvg(int from, int to, int channel = MONO) {
   if (from == to) return vReal[from];              // small optimization
-  if (averageByRMS) return fftAddAvgRMS(from, to); // use SMS
-  else return fftAddAvgLin(from, to);              // use linear average
+  if (averageByRMS) return fftAddAvgRMS(from, to, channel); // use SMS
+  else return fftAddAvgLin(from, to, channel);              // use linear average
 }
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -421,7 +456,10 @@ constexpr bool skipSecondFFT = false;
 // High-Pass "DC blocker" filter
 // see https://www.dsprelated.com/freebooks/filters/DC_Blocker.html
 static void runDCBlocker(uint_fast16_t numSamples, float *sampleBuffer) {
-  constexpr float filterR = 0.990f;      // around 40hz
+  //USER_PRINTLN("ARH: runDCBlocker");
+  constexpr float filterR = 0.900f;      // around 20hz
+  //constexpr float filterR = 0.990f;      // around 40hz
+
   static float xm1 = 0.0f;
   static SR_HIRES_TYPE ym1 = 0.0f;
 
@@ -457,22 +495,9 @@ static void runLowPassFilter(uint_fast16_t numSamples, float *sampleBuffer) {
         filtered *= (1.0 + dynamicMultiplier);
       }
     }
-    
-
     // Update ym1 with damping applied
-
     sampleBuffer[i] = filtered;
   }
-
-  // Print data at the end of processing to reduce stack usage
-  // Serial.print("enhancementFactor: ");
-  // Serial.print(enhancementFactor);
-  // Serial.print(", threshold: ");
-  // Serial.print(threshold);
-  // Serial.print(", dynamicMultiplier: ");
-  // Serial.print(dynamicMultiplier);
-  // Serial.print(", filtered: ");
-  // Serial.println(ym1);
 }
 //
 // FFT main task
@@ -481,7 +506,7 @@ void FFTcode(void * parameter)
 {
   #ifdef SR_DEBUG
     USER_FLUSH();
-    USER_PRINT("AR: "); USER_PRINT(pcTaskGetTaskName(NULL));
+    USER_PRINT("ARH: AR: "); USER_PRINT(pcTaskGetTaskName(NULL));
     USER_PRINT(" task started on core "); USER_PRINT(xPortGetCoreID()); // causes trouble on -S2
     USER_PRINT(" [prio="); USER_PRINT(uxTaskPriorityGet(NULL));
     USER_PRINT(", min free stack="); USER_PRINT(uxTaskGetStackHighWaterMark(NULL));
@@ -533,6 +558,48 @@ void FFTcode(void * parameter)
     // get a fresh batch of samples from I2S
     if (audioSource) audioSource->getSamples(vReal, samplesFFT);
 
+    //Split the left and right channel data into two separate arrays like vRealLeft and vRealRight. 
+    //Left channel is odd number samples and right channel is even number samples.
+    for (int i = 0; i < samplesFFT; i++) {
+     if (i & 1) vRealRight[i/2] = vReal[i];
+     else vRealLeft[i/2] = vReal[i];
+    }
+
+/**
+    //Add all values of vRealLeft in the most optimal way possible.
+    //Add all values of vRealRight in the most optimal way possible.
+    float sumLeft = 0.0f;
+    float sumRight = 0.0f;
+    for (int i = 0; i < samplesFFTLeft; i++) {
+     sumLeft += vRealLeft[i];
+     sumRight += vRealRight[i];
+    }
+
+    //Print all 256 values of vReal over 16 lines. Each value should be separated by a comma. The last value per line should not be followed by a comma.
+    if(sumLeft > 256){
+      for (int i = 0; i < samplesFFTLeft; i++) {
+      //Print "L" if this is the first value of the line.
+        if (i % 16 == 0) USER_PRINT("LEFT: ");
+        USER_PRINT(vRealLeft[i]);
+        if (i < (samplesFFTLeft - 1)) USER_PRINT("\t");
+        if ((i % 16) == 15) USER_PRINTLN();
+      }
+    }
+    if(sumRight > 256){
+      for (int i = 0; i < samplesFFTRight; i++) {
+        if (i % 16 == 0) USER_PRINT("RIGHT: ");
+        USER_PRINT(vRealRight[i]);
+        if (i < (samplesFFTRight - 1)) USER_PRINT("\t");
+        if ((i % 16) == 15) USER_PRINTLN();
+      }
+    }
+    if(sumRight > 256 || sumLeft > 256){
+      USER_PRINTLN();
+      USER_PRINTLN();
+    }
+   
+**/
+
 #if defined(WLED_DEBUG) || defined(SR_DEBUG)|| defined(SR_STATS)
     // debug info in case that stack usage changes
     static unsigned int minStackFree = UINT32_MAX;
@@ -571,15 +638,17 @@ void FFTcode(void * parameter)
     // experimental - be nice to LED update task (trying to avoid flickering) - dual core only
     if (strip.isServicing()) delay(2);
 #endif
-
     // band pass filter - can reduce noise floor by a factor of 50
     // downside: frequencies below 100Hz will be ignored
    if ((useInputFilter > 0) && (useInputFilter < 99)) {
       switch(useInputFilter) {
         case 1: runMicFilter(samplesFFT, vReal); break;                   // PDM microphone bandpass
         //ARH:
-        case 2: runLowPassFilter(samplesFFT, vReal); break;               // generic Low-Pass filter (~100hz cut-off)
-        //case 2: runDCBlocker(samplesFFT, vReal); break;                   // generic Low-Cut + DC blocker (~40hz cut-off)
+        //case 2: runLowPassFilter(samplesFFT, vReal); break;               // generic Low-Pass filter (~100hz cut-off)
+        case 2: 
+          runDCBlocker(samplesFFTLeft, vRealLeft);
+          runDCBlocker(samplesFFTRight, vRealRight);
+        break;                   // generic Low-Cut + DC blocker (~40hz cut-off)
       }
     }
 
@@ -699,22 +768,22 @@ void FFTcode(void * parameter)
     * Multiplier = (End frequency/ Start frequency) ^ 1/16
     * Multiplier = 1.320367784
     */                                    //  Range
-      fftCalc[ 0] = fftAddAvg(2,4);       // 60 - 100
-      fftCalc[ 1] = fftAddAvg(4,5);       // 80 - 120
-      fftCalc[ 2] = fftAddAvg(5,7);       // 100 - 160
-      fftCalc[ 3] = fftAddAvg(7,9);       // 140 - 200
-      fftCalc[ 4] = fftAddAvg(9,12);      // 180 - 260
-      fftCalc[ 5] = fftAddAvg(12,16);     // 240 - 340
-      fftCalc[ 6] = fftAddAvg(16,21);     // 320 - 440
-      fftCalc[ 7] = fftAddAvg(21,29);     // 420 - 600
-      fftCalc[ 8] = fftAddAvg(29,37);     // 580 - 760
-      fftCalc[ 9] = fftAddAvg(37,48);     // 740 - 980
-      fftCalc[10] = fftAddAvg(48,64);     // 960 - 1300
-      fftCalc[11] = fftAddAvg(64,84);     // 1280 - 1700
-      fftCalc[12] = fftAddAvg(84,111);    // 1680 - 2240
-      fftCalc[13] = fftAddAvg(111,147);   // 2220 - 2960
-      fftCalc[14] = fftAddAvg(147,194);   // 2940 - 3900
-      fftCalc[15] = fftAddAvg(194,250);   // 3880 - 5000 // avoid the last 5 bins, which are usually inaccurate
+      fftCalcLeft[ 0] = fftAddAvg(2,4);       // 60 - 100
+      fftCalcLeft[ 1] = fftAddAvg(4,5);       // 80 - 120
+      fftCalcLeft[ 2] = fftAddAvg(5,7);       // 100 - 160
+      fftCalcLeft[ 3] = fftAddAvg(7,9);       // 140 - 200
+      fftCalcLeft[ 4] = fftAddAvg(9,12);      // 180 - 260
+      fftCalcLeft[ 5] = fftAddAvg(12,16);     // 240 - 340
+      fftCalcLeft[ 6] = fftAddAvg(16,21);     // 320 - 440
+      fftCalcLeft[ 7] = fftAddAvg(21,29);     // 420 - 600
+      fftCalcLeft[ 8] = fftAddAvg(29,37);     // 580 - 760
+      fftCalcLeft[ 9] = fftAddAvg(37,48);     // 740 - 980
+      fftCalcLeft[10] = fftAddAvg(48,64);     // 960 - 1300
+      fftCalcLeft[11] = fftAddAvg(64,84);     // 1280 - 1700
+      fftCalcLeft[12] = fftAddAvg(84,111);    // 1680 - 2240
+      fftCalcLeft[13] = fftAddAvg(111,147);   // 2220 - 2960
+      fftCalcLeft[14] = fftAddAvg(147,194);   // 2940 - 3900
+      fftCalcLeft[15] = fftAddAvg(194,250);   // 3880 - 5000 // avoid the last 5 bins, which are usually inaccurate
 #else
   //WLEDMM: different distributions
   if (freqDist == 0) {
@@ -722,88 +791,134 @@ void FFTcode(void * parameter)
                                                     // bins frequency  range
       if (useInputFilter==1) {
         // skip frequencies below 100hz
-        fftCalc[ 0] = 0.8f * fftAddAvg(3,3);
-        fftCalc[ 1] = 0.9f * fftAddAvg(4,4);
-        fftCalc[ 2] = fftAddAvg(5,5);
-        fftCalc[ 3] = fftAddAvg(6,6);
+        fftCalcLeft[ 0] = 0.8f * fftAddAvg(3,3, LEFT_CHANNEL);
+        fftCalcRight[ 0] = 0.8f * fftAddAvg(3,3, RIGHT_CHANNEL);
+        fftCalcLeft[ 1] = 0.9f * fftAddAvg(4,4, LEFT_CHANNEL);
+        fftCalcRight[ 1] = 0.9f * fftAddAvg(4,4, RIGHT_CHANNEL);
+        fftCalcLeft[ 2] = fftAddAvg(5,5, LEFT_CHANNEL);
+        fftCalcRight[ 2] = fftAddAvg(5,5, RIGHT_CHANNEL);
+        fftCalcLeft[ 3] = fftAddAvg(6,6, LEFT_CHANNEL);
+        fftCalcRight[ 3] = fftAddAvg(6,6, RIGHT_CHANNEL);
         // don't use the last bins from 206 to 255. 
-        fftCalc[15] = fftAddAvg(165,205) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
+        fftCalcLeft[15] = fftAddAvg(165,205, LEFT_CHANNEL) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
+        fftCalcRight[15] = fftAddAvg(165,205, RIGHT_CHANNEL) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
       } else {
-        fftCalc[ 0] = fftAddAvg(1,1);               // 1    43 - 86   sub-bass
-        fftCalc[ 1] = fftAddAvg(2,2);               // 1    86 - 129  bass
-        fftCalc[ 2] = fftAddAvg(3,4);               // 2   129 - 216  bass
-        fftCalc[ 3] = fftAddAvg(5,6);               // 2   216 - 301  bass + midrange
+        fftCalcLeft[ 0] = fftAddAvg(1,1, LEFT_CHANNEL);               // 1    43 - 86   sub-bass
+        fftCalcRight[ 0] = fftAddAvg(1,1, RIGHT_CHANNEL);               // 1    43 - 86   sub-bass
+        fftCalcLeft[ 1] = fftAddAvg(2,2, LEFT_CHANNEL);               // 1    86 - 129  bass
+        fftCalcRight[ 1] = fftAddAvg(2,2, RIGHT_CHANNEL);               // 1    86 - 129  bass
+        fftCalcLeft[ 2] = fftAddAvg(3,4, LEFT_CHANNEL);               // 2   129 - 216  bass
+        fftCalcRight[ 2] = fftAddAvg(3,4, RIGHT_CHANNEL);               // 2   129 - 216  bass
+        fftCalcLeft[ 3] = fftAddAvg(5,6, LEFT_CHANNEL);               // 2   216 - 301  bass + midrange
+        fftCalcRight[ 3] = fftAddAvg(5,6, RIGHT_CHANNEL);               // 2   216 - 301  bass + midrange
         // don't use the last bins from 216 to 255. They are usually contaminated by aliasing (aka noise) 
-        fftCalc[15] = fftAddAvg(165,215) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
+        fftCalcLeft[15] = fftAddAvg(165,215, LEFT_CHANNEL) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
+        fftCalcRight[15] = fftAddAvg(165,215, RIGHT_CHANNEL) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
       }
-      fftCalc[ 4] = fftAddAvg(7,9);                // 3   301 - 430  midrange
-      fftCalc[ 5] = fftAddAvg(10,12);               // 3   430 - 560  midrange
-      fftCalc[ 6] = fftAddAvg(13,18);               // 5   560 - 818  midrange
-      fftCalc[ 7] = fftAddAvg(19,25);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
-      fftCalc[ 8] = fftAddAvg(26,32);               // 7  1120 - 1421 midrange
-      fftCalc[ 9] = fftAddAvg(33,43);               // 9  1421 - 1895 midrange
-      fftCalc[10] = fftAddAvg(44,55);               // 12 1895 - 2412 midrange + high mid
-      fftCalc[11] = fftAddAvg(56,69);               // 14 2412 - 3015 high mid
-      fftCalc[12] = fftAddAvg(70,85);               // 16 3015 - 3704 high mid
-      fftCalc[13] = fftAddAvg(86,103);              // 18 3704 - 4479 high mid
-      fftCalc[14] = fftAddAvg(104,164) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
+      fftCalcLeft[ 4] = fftAddAvg(7,9, LEFT_CHANNEL);                // 3   301 - 430  midrange
+      fftCalcRight[ 4] = fftAddAvg(7,9, RIGHT_CHANNEL);                // 3   301 - 430  midrange
+      fftCalcLeft[ 5] = fftAddAvg(10,12, LEFT_CHANNEL);               // 3   430 - 560  midrange
+      fftCalcRight[ 5] = fftAddAvg(10,12, RIGHT_CHANNEL);               // 3   430 - 560  midrange
+      fftCalcLeft[ 6] = fftAddAvg(13,18, LEFT_CHANNEL);               // 5   560 - 818  midrange
+      fftCalcRight[ 6] = fftAddAvg(13,18, RIGHT_CHANNEL);               // 5   560 - 818  midrange
+      fftCalcLeft[ 7] = fftAddAvg(19,25, LEFT_CHANNEL);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
+      fftCalcRight[ 7] = fftAddAvg(19,25, RIGHT_CHANNEL);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
+      fftCalcLeft[ 8] = fftAddAvg(26,32, LEFT_CHANNEL);               // 7  1120 - 1421 midrange
+      fftCalcRight[ 8] = fftAddAvg(26,32, RIGHT_CHANNEL);               // 7  1120 - 1421 midrange
+      fftCalcLeft[ 9] = fftAddAvg(33,43, LEFT_CHANNEL);               // 9  1421 - 1895 midrange
+      fftCalcRight[ 9] = fftAddAvg(33,43, RIGHT_CHANNEL);               // 9  1421 - 1895 midrange
+      fftCalcLeft[10] = fftAddAvg(44,55, LEFT_CHANNEL);               // 12 1895 - 2412 midrange + high mid
+      fftCalcRight[10] = fftAddAvg(44,55, RIGHT_CHANNEL);               // 12 1895 - 2412 midrange + high mid
+      fftCalcLeft[11] = fftAddAvg(56,69, LEFT_CHANNEL);               // 14 2412 - 3015 high mid
+      fftCalcRight[11] = fftAddAvg(56,69, RIGHT_CHANNEL);               // 14 2412 - 3015 high mid
+      fftCalcLeft[12] = fftAddAvg(70,85, LEFT_CHANNEL);               // 16 3015 - 3704 high mid
+      fftCalcRight[12] = fftAddAvg(70,85, RIGHT_CHANNEL);               // 16 3015 - 3704 high mid
+      fftCalcLeft[13] = fftAddAvg(86,103, LEFT_CHANNEL);              // 18 3704 - 4479 high mid
+      fftCalcRight[13] = fftAddAvg(86,103, RIGHT_CHANNEL);              // 18 3704 - 4479 high mid
+      fftCalcLeft[14] = fftAddAvg(104,164, LEFT_CHANNEL) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
+      fftCalcRight[14] = fftAddAvg(104,164, RIGHT_CHANNEL) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
   }
   else if (freqDist == 1) { //WLEDMM: Rightshift: note ewowi: frequencies in comments are not correct
       if (useInputFilter==1) {
         // skip frequencies below 100hz
-        fftCalc[ 0] = 0.8f * fftAddAvg(1,1);
-        fftCalc[ 1] = 0.9f * fftAddAvg(2,2);
-        fftCalc[ 2] = fftAddAvg(3,3);
-        fftCalc[ 3] = fftAddAvg(4,4);
+        fftCalcLeft[ 0] = 0.8f * fftAddAvg(1,1, LEFT_CHANNEL);
+        fftCalcRight[ 0] = 0.8f * fftAddAvg(1,1, RIGHT_CHANNEL);
+        fftCalcLeft[ 1] = 0.9f * fftAddAvg(2,2, LEFT_CHANNEL);
+        fftCalcRight[ 1] = 0.9f * fftAddAvg(2,2, RIGHT_CHANNEL);
+        fftCalcLeft[ 2] = fftAddAvg(3,3, LEFT_CHANNEL);
+        fftCalcRight[ 2] = fftAddAvg(3,3, RIGHT_CHANNEL);
+        fftCalcLeft[ 3] = fftAddAvg(4,4, LEFT_CHANNEL);
+        fftCalcRight[ 3] = fftAddAvg(4,4, RIGHT_CHANNEL);
         // don't use the last bins from 206 to 255. 
-        fftCalc[15] = fftAddAvg(165,205) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
+        fftCalcLeft[15] = fftAddAvg(165,205, LEFT_CHANNEL) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
+        fftCalcRight[15] = fftAddAvg(165,205, RIGHT_CHANNEL) * 0.75f;   // 40 7106 - 8828 high             -- with some damping
       } else {
-        fftCalc[ 0] = fftAddAvg(1,1);               // 1    43 - 86   sub-bass
-        fftCalc[ 1] = fftAddAvg(2,2);               // 1    86 - 129  bass
-        fftCalc[ 2] = fftAddAvg(3,3);               // 2   129 - 216  bass
-        fftCalc[ 3] = fftAddAvg(4,4);               // 2   216 - 301  bass + midrange
+        fftCalcLeft[ 0] = fftAddAvg(1,1, LEFT_CHANNEL);               // 1    43 - 86   sub-bass
+        fftCalcRight[ 0] = fftAddAvg(1,1, RIGHT_CHANNEL);               // 1    43 - 86   sub-bass
+        fftCalcLeft[ 1] = fftAddAvg(2,2, LEFT_CHANNEL);               // 1    86 - 129  bass
+        fftCalcRight[ 1] = fftAddAvg(2,2, RIGHT_CHANNEL);               // 1    86 - 129  bass
+        fftCalcLeft[ 2] = fftAddAvg(3,3, LEFT_CHANNEL);               // 2   129 - 216  bass
+        fftCalcRight[ 2] = fftAddAvg(3,3, RIGHT_CHANNEL);               // 2   129 - 216  bass
+        fftCalcLeft[ 3] = fftAddAvg(4,4, LEFT_CHANNEL);               // 2   216 - 301  bass + midrange
+        fftCalcRight[ 3] = fftAddAvg(4,4, RIGHT_CHANNEL);               // 2   216 - 301  bass + midrange
         // don't use the last bins from 216 to 255. They are usually contaminated by aliasing (aka noise) 
-        fftCalc[15] = fftAddAvg(165,215) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
+        fftCalcLeft[15] = fftAddAvg(165,215, LEFT_CHANNEL) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
+        fftCalcRight[15] = fftAddAvg(165,215, RIGHT_CHANNEL) * 0.70f;   // 50 7106 - 9259 high             -- with some damping
       }
-      fftCalc[ 4] = fftAddAvg(5,6);                // 3   301 - 430  midrange
-      fftCalc[ 5] = fftAddAvg(7,8);               // 3   430 - 560  midrange
-      fftCalc[ 6] = fftAddAvg(9,10);               // 5   560 - 818  midrange
-      fftCalc[ 7] = fftAddAvg(11,13);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
-      fftCalc[ 8] = fftAddAvg(14,18);               // 7  1120 - 1421 midrange
-      fftCalc[ 9] = fftAddAvg(19,25);               // 9  1421 - 1895 midrange
-      fftCalc[10] = fftAddAvg(26,36);               // 12 1895 - 2412 midrange + high mid
-      fftCalc[11] = fftAddAvg(37,45);               // 14 2412 - 3015 high mid
-      fftCalc[12] = fftAddAvg(46,66);               // 16 3015 - 3704 high mid
-      fftCalc[13] = fftAddAvg(67,97);              // 18 3704 - 4479 high mid
-      fftCalc[14] = fftAddAvg(98,164) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
+      fftCalcLeft[ 4] = fftAddAvg(5,6, LEFT_CHANNEL);                // 3   301 - 430  midrange
+      fftCalcRight[ 4] = fftAddAvg(5,6, RIGHT_CHANNEL);                // 3   301 - 430  midrange
+      fftCalcLeft[ 5] = fftAddAvg(7,8, LEFT_CHANNEL);               // 3   430 - 560  midrange
+      fftCalcRight[ 5] = fftAddAvg(7,8, RIGHT_CHANNEL);               // 3   430 - 560  midrange
+      fftCalcLeft[ 6] = fftAddAvg(9,10, LEFT_CHANNEL);               // 5   560 - 818  midrange
+      fftCalcRight[ 6] = fftAddAvg(9,10, RIGHT_CHANNEL);               // 5   560 - 818  midrange
+      fftCalcLeft[ 7] = fftAddAvg(11,13, LEFT_CHANNEL);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
+      fftCalcRight[ 7] = fftAddAvg(11,13, RIGHT_CHANNEL);               // 7   818 - 1120 midrange -- 1Khz should always be the center !
+      fftCalcLeft[ 8] = fftAddAvg(14,18, LEFT_CHANNEL);               // 7  1120 - 1421 midrange
+      fftCalcRight[ 8] = fftAddAvg(14,18, RIGHT_CHANNEL);               // 7  1120 - 1421 midrange
+      fftCalcLeft[ 9] = fftAddAvg(19,25, LEFT_CHANNEL);               // 9  1421 - 1895 midrange
+      fftCalcRight[ 9] = fftAddAvg(19,25, RIGHT_CHANNEL);               // 9  1421 - 1895 midrange
+      fftCalcLeft[10] = fftAddAvg(26,36, LEFT_CHANNEL);               // 12 1895 - 2412 midrange + high mid
+      fftCalcRight[10] = fftAddAvg(26,36, RIGHT_CHANNEL);               // 12 1895 - 2412 midrange + high mid
+      fftCalcLeft[11] = fftAddAvg(37,45, LEFT_CHANNEL);               // 14 2412 - 3015 high mid
+      fftCalcRight[11] = fftAddAvg(37,45, RIGHT_CHANNEL);               // 14 2412 - 3015 high mid
+      fftCalcLeft[12] = fftAddAvg(46,66, LEFT_CHANNEL);               // 16 3015 - 3704 high mid
+      fftCalcRight[12] = fftAddAvg(46,66, RIGHT_CHANNEL);               // 16 3015 - 3704 high mid
+      fftCalcLeft[13] = fftAddAvg(67,97, LEFT_CHANNEL);              // 18 3704 - 4479 high mid
+      fftCalcRight[13] = fftAddAvg(67,97, RIGHT_CHANNEL);              // 18 3704 - 4479 high mid
+      fftCalcLeft[14] = fftAddAvg(98,164, LEFT_CHANNEL) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
+      fftCalcRight[14] = fftAddAvg(98,164, RIGHT_CHANNEL) * 0.88f;     // 61 4479 - 7106 high mid + high  -- with slight damping
   }
 #endif
       } else {  // noise gate closed - just decay old values
         isFirstRun = false;
         for (int i=0; i < NUM_GEQ_CHANNELS; i++) {
-          fftCalc[i] *= 0.85f;  // decay to zero
-          if (fftCalc[i] < 4.0f) fftCalc[i] = 0.0f;
+          fftCalcLeft[i] *= 0.85f;  // decay to zero
+          fftCalcRight[i] *= 0.85f;  // decay to zero
+          if (fftCalcLeft[i] < 4.0f) fftCalcLeft[i] = 0.0f;
+          if (fftCalcRight[i] < 4.0f) fftCalcRight[i] = 0.0f;
         }
       }
 
-      memcpy(lastFftCalc, fftCalc, sizeof(lastFftCalc)); // make a backup of last "good" channels
+      memcpy(lastFftCalcLeft, fftCalcLeft, sizeof(lastFftCalcLeft)); // make a backup of last "good" channels
+      memcpy(lastFftCalcRight, fftCalcRight, sizeof(lastFftCalcRight)); // make a backup of last "good" channels
 
     } else { // if second run skipped
-      memcpy(fftCalc, lastFftCalc, sizeof(fftCalc)); // restore last "good" channels
+      memcpy(fftCalcLeft, lastFftCalcLeft, sizeof(fftCalcLeft)); // restore last "good" channels
+      memcpy(fftCalcRight, lastFftCalcRight, sizeof(fftCalcRight)); // restore last "good" channels
     }
 
     // post-processing of frequency channels (pink noise adjustment, AGC, smoothing, scaling)
     if (pinkIndex > MAX_PINK) pinkIndex = MAX_PINK;
     //postProcessFFTResults((fabsf(sampleAvg) > 0.25f)? true : false , NUM_GEQ_CHANNELS);
-    postProcessFFTResults((fabsf(volumeSmth)>0.25f)? true : false , NUM_GEQ_CHANNELS);    // this function modifies fftCalc, fftAvg and fftResult
+    postProcessFFTResults((fabsf(volumeSmth)>0.25f)? true : false , NUM_GEQ_CHANNELS);    // this function modifies fftCalcLeft, fftAvgLeft and fftResult
 
 #if defined(WLED_DEBUG) || defined(SR_DEBUG)|| defined(SR_STATS)
     // timing
-    static uint64_t lastLastFFT = 0;
+    static uint64_t lastLastFFTLeft = 0;
     if (haveDoneFFT && (start < esp_timer_get_time())) { // filter out overflows
       uint64_t fftTimeInMillis = ((esp_timer_get_time() - start) +5ULL) / 10ULL; // "+5" to ensure proper rounding
-      fftTime  = (((fftTimeInMillis + lastLastFFT)/2) *3 + fftTime*7)/10.0; // smart smooth
-      lastLastFFT = fftTimeInMillis;
+      fftTime  = (((fftTimeInMillis + lastLastFFTLeft)/2) *3 + fftTime*7)/10.0; // smart smooth
+      lastLastFFTLeft = fftTimeInMillis;
     }
 #endif
 
@@ -869,78 +984,144 @@ static void postProcessFFTResults(bool noiseGateOpen, int numberOfChannels) // p
 
       if (noiseGateOpen) { // noise gate open
         // Adjustment for frequency curves.
-        fftCalc[i] *= fftResultPink[pinkIndex][i];
-        if (FFTScalingMode > 0) fftCalc[i] *= FFT_DOWNSCALE;  // adjustment related to FFT windowing function
+        fftCalcLeft[i] *= fftResultPink[pinkIndex][i];
+        fftCalcRight[i] *= fftResultPink[pinkIndex][i];
+        if (FFTScalingMode > 0) fftCalcLeft[i] *= FFT_DOWNSCALE;  // adjustment related to FFT windowing function
+        if (FFTScalingMode > 0) fftCalcRight[i] *= FFT_DOWNSCALE;  // adjustment related to FFT windowing function
         // Manual linear adjustment of gain using sampleGain adjustment for different input types.
-        fftCalc[i] *= soundAgc ? multAgc : ((float)sampleGain/40.0f * (float)inputLevel/128.0f + 1.0f/16.0f); //apply gain, with inputLevel adjustment
-        if(fftCalc[i] < 0) fftCalc[i] = 0;
+        fftCalcLeft[i] *= soundAgc ? multAgc : ((float)sampleGain/40.0f * (float)inputLevel/128.0f + 1.0f/16.0f); //apply gain, with inputLevel adjustment
+        fftCalcRight[i] *= soundAgc ? multAgc : ((float)sampleGain/40.0f * (float)inputLevel/128.0f + 1.0f/16.0f); //apply gain, with inputLevel adjustment
+
+        if(fftCalcLeft[i] < 0) fftCalcLeft[i] = 0;
+        if(fftCalcRight[i] < 0) fftCalcRight[i] = 0;
       }
 
       // smooth results - rise fast, fall slower
-      if(fftCalc[i] > fftAvg[i])   // rise fast 
-        fftAvg[i] = fftCalc[i] *0.78f + 0.22f*fftAvg[i];  // will need approx 1-2 cycles (50ms) for converging against fftCalc[i]
+      if(fftCalcLeft[i] > fftAvgLeft[i])   // rise fast 
+        fftAvgLeft[i] = fftCalcLeft[i] *0.78f + 0.22f*fftAvgLeft[i];  // will need approx 1-2 cycles (50ms) for converging against fftCalcLeft[i]
       else {                       // fall slow
-        if (decayTime < 250)      fftAvg[i] = fftCalc[i]*0.4f + 0.6f*fftAvg[i]; 
-        else if (decayTime < 500)  fftAvg[i] = fftCalc[i]*0.33f + 0.67f*fftAvg[i]; 
-        else if (decayTime < 1000) fftAvg[i] = fftCalc[i]*0.22f + 0.78f*fftAvg[i];  // approx  5 cycles (225ms) for falling to zero
-        else if (decayTime < 2000) fftAvg[i] = fftCalc[i]*0.17f + 0.83f*fftAvg[i];  // default - approx  9 cycles (225ms) for falling to zero
-        else if (decayTime < 3000) fftAvg[i] = fftCalc[i]*0.14f + 0.86f*fftAvg[i];  // approx 14 cycles (350ms) for falling to zero
-        else if (decayTime < 4000) fftAvg[i] = fftCalc[i]*0.1f  + 0.9f*fftAvg[i];
-        else fftAvg[i] = fftCalc[i]*0.05f  + 0.95f*fftAvg[i];
+        if (decayTime < 250)      fftAvgLeft[i] = fftCalcLeft[i]*0.4f + 0.6f*fftAvgLeft[i]; 
+        else if (decayTime < 500)  fftAvgLeft[i] = fftCalcLeft[i]*0.33f + 0.67f*fftAvgLeft[i]; 
+        else if (decayTime < 1000) fftAvgLeft[i] = fftCalcLeft[i]*0.22f + 0.78f*fftAvgLeft[i];  // approx  5 cycles (225ms) for falling to zero
+        else if (decayTime < 2000) fftAvgLeft[i] = fftCalcLeft[i]*0.17f + 0.83f*fftAvgLeft[i];  // default - approx  9 cycles (225ms) for falling to zero
+        else if (decayTime < 3000) fftAvgLeft[i] = fftCalcLeft[i]*0.14f + 0.86f*fftAvgLeft[i];  // approx 14 cycles (350ms) for falling to zero
+        else if (decayTime < 4000) fftAvgLeft[i] = fftCalcLeft[i]*0.1f  + 0.9f*fftAvgLeft[i];
+        else fftAvgLeft[i] = fftCalcLeft[i]*0.05f  + 0.95f*fftAvgLeft[i];
+      }
+      // smooth results - rise fast, fall slower
+      if(fftCalcRight[i] > fftAvgRight[i])   // rise fast 
+        fftAvgRight[i] = fftCalcRight[i] *0.78f + 0.22f*fftAvgRight[i];  // will need approx 1-2 cycles (50ms) for converging against fftCalcLeft[i]
+      else {                       // fall slow
+        if (decayTime < 250)      fftAvgRight[i] = fftCalcRight[i]*0.4f + 0.6f*fftAvgRight[i]; 
+        else if (decayTime < 500)  fftAvgRight[i] = fftCalcRight[i]*0.33f + 0.67f*fftAvgRight[i]; 
+        else if (decayTime < 1000) fftAvgRight[i] = fftCalcRight[i]*0.22f + 0.78f*fftAvgRight[i];  // approx  5 cycles (225ms) for falling to zero
+        else if (decayTime < 2000) fftAvgRight[i] = fftCalcRight[i]*0.17f + 0.83f*fftAvgRight[i];  // default - approx  9 cycles (225ms) for falling to zero
+        else if (decayTime < 3000) fftAvgRight[i] = fftCalcRight[i]*0.14f + 0.86f*fftAvgRight[i];  // approx 14 cycles (350ms) for falling to zero
+        else if (decayTime < 4000) fftAvgRight[i] = fftCalcRight[i]*0.1f  + 0.9f*fftAvgRight[i];
+        else fftAvgRight[i] = fftCalcRight[i]*0.05f  + 0.95f*fftAvgRight[i];
       }
       // constrain internal vars - just to be sure
-      fftCalc[i] = constrain(fftCalc[i], 0.0f, 1023.0f);
-      fftAvg[i] = constrain(fftAvg[i], 0.0f, 1023.0f);
+      fftCalcLeft[i] = constrain(fftCalcLeft[i], 0.0f, 1023.0f);
+      fftAvgLeft[i] = constrain(fftAvgLeft[i], 0.0f, 1023.0f);
 
-      float currentResult;
-      if(limiterOn == true)
-        currentResult = fftAvg[i];
-      else
-        currentResult = fftCalc[i];
+      fftCalcRight[i] = constrain(fftCalcRight[i], 0.0f, 1023.0f);
+      fftAvgRight[i] = constrain(fftAvgRight[i], 0.0f, 1023.0f);
 
+      float currentResultLeft;
+      float currentResultRight;
+      if(limiterOn == true){
+        currentResultLeft = fftAvgLeft[i];
+        currentResultRight = fftAvgRight[i];
+      }else{
+        currentResultLeft = fftCalcLeft[i];
+        currentResultRight = fftCalcRight[i];
+      }
+      //FFTScalingMode for the left channel
       switch (FFTScalingMode) {
         case 1:
             // Logarithmic scaling
-            currentResult *= 0.42;                      // 42 is the answer ;-)
-            currentResult -= 8.0;                       // this skips the lowest row, giving some room for peaks
-            if (currentResult > 1.0) currentResult = logf(currentResult); // log to base "e", which is the fastest log() function
-            else currentResult = 0.0;                   // special handling, because log(1) = 0; log(0) = undefined
-            currentResult *= 0.85f + (float(i)/18.0f);  // extra up-scaling for high frequencies
-            currentResult = mapf(currentResult, 0, LOG_256, 0, 255); // map [log(1) ... log(255)] to [0 ... 255]
+            currentResultLeft *= 0.42;                      // 42 is the answer ;-)
+            currentResultLeft -= 8.0;                       // this skips the lowest row, giving some room for peaks
+            if (currentResultLeft > 1.0) currentResultLeft = logf(currentResultLeft); // log to base "e", which is the fastest log() function
+            else currentResultLeft = 0.0;                   // special handling, because log(1) = 0; log(0) = undefined
+            currentResultLeft *= 0.85f + (float(i)/18.0f);  // extra up-scaling for high frequencies
+            currentResultLeft = mapf(currentResultLeft, 0, LOG_256, 0, 255); // map [log(1) ... log(255)] to [0 ... 255]
         break;
         case 2:
             // Linear scaling
-            currentResult *= 0.30f;                     // needs a bit more damping, get stay below 255
-            currentResult -= 2.0;                       // giving a bit more room for peaks
-            if (currentResult < 1.0f) currentResult = 0.0f;
-            currentResult *= 0.85f + (float(i)/1.8f);   // extra up-scaling for high frequencies
+            currentResultLeft *= 0.30f;                     // needs a bit more damping, get stay below 255
+            currentResultLeft -= 2.0;                       // giving a bit more room for peaks
+            if (currentResultLeft < 1.0f) currentResultLeft = 0.0f;
+            currentResultLeft *= 0.85f + (float(i)/1.8f);   // extra up-scaling for high frequencies
         break;
         case 3:
             // square root scaling
-            currentResult *= 0.38f;
-            //currentResult *= 0.34f;                   //experiment
-            currentResult -= 6.0f;
-            if (currentResult > 1.0) currentResult = sqrtf(currentResult);
-            else currentResult = 0.0;                   // special handling, because sqrt(0) = undefined
-            currentResult *= 0.85f + (float(i)/4.5f);   // extra up-scaling for high frequencies
-            //currentResult *= 0.80f + (float(i)/5.6f); //experiment
-            currentResult = mapf(currentResult, 0.0, 16.0, 0.0, 255.0); // map [sqrt(1) ... sqrt(256)] to [0 ... 255]
+            currentResultLeft *= 0.38f;
+            //currentResultLeft *= 0.34f;                   //experiment
+            currentResultLeft -= 6.0f;
+            if (currentResultLeft > 1.0) currentResultLeft = sqrtf(currentResultLeft);
+            else currentResultLeft = 0.0;                   // special handling, because sqrt(0) = undefined
+            currentResultLeft *= 0.85f + (float(i)/4.5f);   // extra up-scaling for high frequencies
+            //currentResultLeft *= 0.80f + (float(i)/5.6f); //experiment
+            currentResultLeft = mapf(currentResultLeft, 0.0, 16.0, 0.0, 255.0); // map [sqrt(1) ... sqrt(256)] to [0 ... 255]
         break;
 
         case 0:
         default:
             // no scaling - leave freq bins as-is
-            currentResult -= 2; // just a bit more room for peaks
+            currentResultLeft -= 2; // just a bit more room for peaks
         break;
       }
+
+      //FFTScalingMode for the right channel
+      switch (FFTScalingMode) {
+        case 1:
+            // Logarithmic scaling
+            currentResultRight *= 0.42;                      // 42 is the answer ;-)
+            currentResultRight -= 8.0;                       // this skips the lowest row, giving some room for peaks
+            if (currentResultRight > 1.0) currentResultRight = logf(currentResultRight); // log to base "e", which is the fastest log() function
+            else currentResultRight = 0.0;                   // special handling, because log(1) = 0; log(0) = undefined
+            currentResultRight *= 0.85f + (float(i)/18.0f);  // extra up-scaling for high frequencies
+            currentResultRight = mapf(currentResultRight, 0, LOG_256, 0, 255); // map [log(1) ... log(255)] to [0 ... 255]
+        break;
+        case 2:
+            // Linear scaling
+            currentResultRight *= 0.30f;                     // needs a bit more damping, get stay below 255
+            currentResultRight -= 2.0;                       // giving a bit more room for peaks
+            if (currentResultRight < 1.0f) currentResultRight = 0.0f;
+            currentResultRight *= 0.85f + (float(i)/1.8f);   // extra up-scaling for high frequencies
+        break;
+        case 3:
+            // square root scaling
+            currentResultRight *= 0.38f;
+            //currentResultRight *= 0.34f;                   //experiment
+            currentResultRight -= 6.0f;
+            if (currentResultRight > 1.0) currentResultRight = sqrtf(currentResultRight);
+            else currentResultRight = 0.0;                   // special handling, because sqrt(0) = undefined
+            currentResultRight *= 0.85f + (float(i)/4.5f);   // extra up-scaling for high frequencies
+            //currentResultRight *= 0.80f + (float(i)/5.6f); //experiment
+            currentResultRight = mapf(currentResultRight, 0.0, 16.0, 0.0, 255.0); // map [sqrt(1) ... sqrt(256)] to [0 ... 255]
+        break;
+
+        case 0:
+        default:
+            // no scaling - leave freq bins as-is
+            currentResultRight -= 2; // just a bit more room for peaks
+        break;
+      }
+
 
       // Now, let's dump it all into fftResult. Need to do this, otherwise other routines might grab fftResult values prematurely.
       if (soundAgc > 0) {  // apply extra "GEQ Gain" if set by user
         float post_gain = (float)inputLevel/128.0f;
         if (post_gain < 1.0f) post_gain = ((post_gain -1.0f) * 0.8f) +1.0f;
-        currentResult *= post_gain;
+        currentResultLeft *= post_gain;
+        currentResultRight *= post_gain;
+
       }
-      fftResult[i] = constrain((int)currentResult, 0, 255);
+      fftResultLeft[i] = constrain((int)currentResultLeft, 0, 255);
+      fftResultRight[i] = constrain((int)currentResultRight, 0, 255);
+
     }
 }
 ////////////////////
@@ -1045,7 +1226,8 @@ class AudioReactive : public Usermod {
       float   sampleSmth;     //  04 Bytes  - either "sampleAvg" or "sampleAgc" depending on soundAgc setting
       uint8_t samplePeak;     //  01 Bytes  - 0 no peak; >=1 peak detected. In future, this will also provide peak Magnitude
       uint8_t frameCounter;   //  01 Bytes  - track duplicate/out of order packets
-      uint8_t fftResult[16];  //  16 Bytes
+      uint8_t fftResultLeft[16];  //  16 Bytes
+      uint8_t fftResultRight[16];  //  16 Bytes
       float  FFT_Magnitude;   //  04 Bytes
       float  FFT_MajorPeak;   //  04 Bytes
     };
@@ -1058,7 +1240,8 @@ class AudioReactive : public Usermod {
       int sampleRaw;          //  04 Bytes
       float sampleAvg;        //  04 Bytes
       bool samplePeak;        //  01 Bytes
-      uint8_t fftResult[16];  //  16 Bytes
+      uint8_t fftResultLeft[16];  //  16 Bytes
+      uint8_t fftResultRight[16];  //  16 Bytes
       double FFT_Magnitude;   //  08 Bytes
       double FFT_MajorPeak;   //  08 Bytes
     };
@@ -1508,8 +1691,8 @@ class AudioReactive : public Usermod {
     }
 
     // MM experimental: limiter to smooth GEQ samples (only for UDP sound receiver mode)
-    //   target value (if gotNewSample) : fftCalc
-    //   last filtered value: fftAvg
+    //   target value (if gotNewSample) : fftCalcLeft
+    //   last filtered value: fftAvgLeft
     void limitGEQDynamics(bool gotNewSample) {
       constexpr float bigChange = 202;                  // just a representative number - a large, expected sample value
       constexpr float smooth = 0.8f;                    // a bit of filtering
@@ -1519,8 +1702,10 @@ class AudioReactive : public Usermod {
 
       if (gotNewSample) { // take new FFT samples as target values
         for(unsigned i=0; i < NUM_GEQ_CHANNELS; i++) {
-          fftCalc[i] = fftResult[i];
-          fftResult[i] = fftAvg[i];
+          fftCalcLeft[i] = fftResultLeft[i];
+          fftResultLeft[i] = fftAvgLeft[i];
+          fftCalcRight[i] = fftResultRight[i];
+          fftResultRight[i] = fftAvgRight[i];
         }
       }
 
@@ -1530,12 +1715,22 @@ class AudioReactive : public Usermod {
       float maxDecay  = (decayTime <= 0)  ? -255.0f : (-bigChange * float(delta_time) / float(decayTime));
 
       for(unsigned i=0; i < NUM_GEQ_CHANNELS; i++) {
-        float deltaSample = fftCalc[i] - fftAvg[i];
-        if (deltaSample > maxAttack) deltaSample = maxAttack;
-        if (deltaSample < maxDecay) deltaSample = maxDecay;
-        deltaSample = deltaSample * smooth;
-        fftAvg[i] = fmaxf(0.0f, fminf(255.0f, fftAvg[i] + deltaSample));
-        fftResult[i] = fftAvg[i];
+        float deltaSampleLeft = fftCalcLeft[i] - fftAvgLeft[i];
+        float deltaSampleRight = fftCalcRight[i] - fftAvgRight[i];
+        if (deltaSampleLeft > maxAttack) deltaSampleLeft = maxAttack;
+        if (deltaSampleRight > maxAttack) deltaSampleRight = maxAttack;
+
+        if (deltaSampleLeft < maxDecay) deltaSampleLeft = maxDecay;
+        if (deltaSampleRight < maxDecay) deltaSampleRight = maxDecay;
+
+        deltaSampleLeft = deltaSampleLeft * smooth;
+        deltaSampleRight = deltaSampleRight * smooth;
+
+        fftAvgLeft[i] = fmaxf(0.0f, fminf(255.0f, fftAvgLeft[i] + deltaSampleLeft));
+        fftAvgRight[i] = fmaxf(0.0f, fminf(255.0f, fftAvgRight[i] + deltaSampleRight));
+
+        fftResultLeft[i] = fftAvgLeft[i];
+        fftResultRight[i] = fftAvgRight[i];
       }
       last_time = millis();
     }
@@ -1587,7 +1782,9 @@ class AudioReactive : public Usermod {
       transmitData.frameCounter = frameCounter;
 
       for (int i = 0; i < NUM_GEQ_CHANNELS; i++) {
-        transmitData.fftResult[i] = (uint8_t)constrain(fftResult[i], 0, 254);
+        transmitData.fftResultLeft[i] = (uint8_t)constrain(fftResultLeft[i], 0, 254);
+        transmitData.fftResultRight[i] = (uint8_t)constrain(fftResultRight[i], 0, 254);
+
       }
 
       transmitData.FFT_Magnitude = my_magnitude;
@@ -1646,7 +1843,10 @@ class AudioReactive : public Usermod {
             //userVar1 = samplePeak;
       }
       //These values are only computed by ESP32
-      for (int i = 0; i < NUM_GEQ_CHANNELS; i++) fftResult[i] = receivedPacket->fftResult[i];
+      for (int i = 0; i < NUM_GEQ_CHANNELS; i++){
+        fftResultLeft[i] = receivedPacket->fftResultLeft[i];
+        fftResultRight[i] = receivedPacket->fftResultRight[i];
+      }
       my_magnitude  = fmaxf(receivedPacket->FFT_Magnitude, 0.0f);
       FFT_Magnitude = my_magnitude;
       FFT_MajorPeak = constrain(receivedPacket->FFT_MajorPeak, 1.0f, 11025.0f);  // restrict value to range expected by effects
@@ -1675,7 +1875,10 @@ class AudioReactive : public Usermod {
             //userVar1 = samplePeak;
       }
       //These values are only available on the ESP32
-      for (int i = 0; i < NUM_GEQ_CHANNELS; i++) fftResult[i] = receivedPacket->fftResult[i];
+      for (int i = 0; i < NUM_GEQ_CHANNELS; i++){
+        fftResultLeft[i] = receivedPacket->fftResultLeft[i];
+        fftResultRight[i] = receivedPacket->fftResultRight[i];
+      }
       my_magnitude  = fmaxf(receivedPacket->FFT_Magnitude, 0.0);
       FFT_Magnitude = my_magnitude;
       FFT_MajorPeak = constrain(receivedPacket->FFT_MajorPeak, 1.0, 11025.0);  // restrict value to range expected by effects
@@ -1755,7 +1958,7 @@ class AudioReactive : public Usermod {
         um_data->u_type[0] = UMT_FLOAT;
         um_data->u_data[1] = &volumeRaw;       // used (New)
         um_data->u_type[1] = UMT_UINT16;
-        um_data->u_data[2] = fftResult;        //*used (Blurz, DJ Light, Noisemove, GEQ_base, 2D Funky Plank, Akemi)
+        um_data->u_data[2] = fftResultLeft;        //*used (Blurz, DJ Light, Noisemove, GEQ_base, 2D Funky Plank, Akemi)
         um_data->u_type[2] = UMT_BYTE_ARR;
         um_data->u_data[3] = &samplePeak;      //*used (Puddlepeak, Ripplepeak, Waterfall)
         um_data->u_type[3] = UMT_BYTE;
@@ -1774,6 +1977,8 @@ class AudioReactive : public Usermod {
         um_data->u_type[9]  = UMT_FLOAT;
         um_data->u_data[10] = &agcSensitivity; // used (New)
         um_data->u_type[10] = UMT_FLOAT;
+        um_data->u_data[11] = fftResultRight;
+        um_data->u_type[11] = UMT_BYTE_ARR;
 #else
        // ESP8266 
         // See https://github.com/MoonModules/WLED/pull/60#issuecomment-1666972133 for explanation of these alternative sources of data
@@ -1849,7 +2054,7 @@ class AudioReactive : public Usermod {
           DEBUGSR_PRINT(F("AR: I2S PDM Microphone - ")); DEBUGSR_PRINTLN(F(I2S_PDM_MIC_CHANNEL_TEXT));
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE, 1.0f/4.0f);
           //ARH:
-          useInputFilter = 2;
+          useInputFilter = 0;
           //useInputFilter = 1;  // PDM bandpass filter - this reduces the noise floor on SPM1423 from 5% Vpp (~380) down to 0.05% Vpp (~5)
           delay(100);
           if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin);
@@ -1878,7 +2083,6 @@ class AudioReactive : public Usermod {
           if ((sclPin >= 0) && (i2c_scl < 0)) i2c_scl = sclPin;
           if (i2c_sda >= 0) sdaPin = -1;                        // -1 = use global
           if (i2c_scl >= 0) sclPin = -1;
-
           if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
           break;
         case 7:
@@ -2230,11 +2434,19 @@ class AudioReactive : public Usermod {
       sampleRaw = 0; rawSampleAgc = 0;
       my_magnitude = 0; FFT_Magnitude = 0; FFT_MajorPeak = 1;
       multAgc = 1;
-      // reset FFT data
-      memset(fftCalc, 0, sizeof(fftCalc)); 
-      memset(fftAvg, 0, sizeof(fftAvg)); 
-      memset(fftResult, 0, sizeof(fftResult)); 
-      for(int i=(init?0:1); i<NUM_GEQ_CHANNELS; i+=2) fftResult[i] = 16; // make a tiny pattern
+      // reset FFT data left
+      memset(fftCalcLeft, 0, sizeof(fftCalcLeft)); 
+      memset(fftAvgLeft, 0, sizeof(fftAvgLeft)); 
+      memset(fftResultLeft, 0, sizeof(fftResultLeft)); 
+      // reset FFT data right
+      memset(fftCalcRight, 0, sizeof(fftCalcRight));
+      memset(fftAvgRight, 0, sizeof(fftAvgRight));
+      memset(fftResultRight, 0, sizeof(fftResultRight));
+
+      for(int i=(init?0:1); i<NUM_GEQ_CHANNELS; i+=2){
+        fftResultLeft[i] = 16; // make a tiny pattern
+        fftResultRight[i] = 16;
+      }
       inputLevel = 128;                                    // reset level slider to default
       autoResetPeak();
 
