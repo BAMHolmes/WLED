@@ -337,6 +337,9 @@ void strip_wait_until_idle(String whoCalledMe); // WLEDMM implemented in FX_fcn.
 #define FX_MODE_PARTYJERK              188
 
 #define MODE_COUNT                     189
+#define FX_MODE_SUBARUFREQ             190
+#define FX_MODE_SUBARUFREQLEFT         191
+#define FX_MODE_SUBARUFREQRIGHT        192
 
 typedef enum mapping1D2D {
   M12_Pixels = 0,

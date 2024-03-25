@@ -7468,6 +7468,176 @@ uint16_t mode_gravfreq(void) {                  // Gravfreq. By Andrew Tuline.
 } // mode_gravfreq()
 static const char _data_FX_MODE_GRAVFREQ[] PROGMEM = "Gravfreq ☾@Rate of fall,Sensitivity;!,!;!;1f;ix=128,m12=0,si=0"; // Pixels, Beatsin
 
+///////////////////////////
+//  ARH: ** SubaruFreq    //
+///////////////////////////
+
+int calculateResponse(uint8_t *fftResult, int startIdx, int endIdx, int threshold, uint8_t intensity) {
+  int tempsamp = 0;
+  for (int i = startIdx; i <= endIdx; i++) {
+    if (fftResult[i] > threshold) {
+      // Scale the response by the intensity factor.
+      tempsamp += (fftResult[i] * intensity) / 255;
+    }
+  }
+  return tempsamp;
+}
+
+void applyFrequencyResponse(int center, int tempsamp, Gravity* gravcen, uint8_t gravity, int palIndex, int palNum = 0) {
+  for (int i = 0; i < tempsamp; i++) {
+    SEGMENT.setPixelColor(center + i, SEGMENT.color_from_palette((uint8_t)palIndex, false, PALETTE_SOLID_WRAP, palNum));
+    SEGMENT.setPixelColor(center - i - 1, SEGMENT.color_from_palette((uint8_t)palIndex, false, PALETTE_SOLID_WRAP, palNum));
+  }
+
+  if (tempsamp >= gravcen->topLED)
+    gravcen->topLED = tempsamp-1;
+  else if (gravcen->gravityCounter % gravity == 0 && gravcen->topLED > 0)
+    gravcen->topLED--;
+
+  if (gravcen->topLED >= 0) {
+    // SEGMENT.setPixelColor(center + gravcen->topLED, CRGB::Gray);
+    // SEGMENT.setPixelColor(center - 1 - gravcen->topLED, CRGB::Gray);
+  }
+  gravcen->gravityCounter = (gravcen->gravityCounter + 1) % gravity;
+}
+  int previousMillis = 0;
+
+uint16_t mode_subarufreq_base(char channel = 'B') {
+  // Use the appropriate channel data
+  uint8_t *channelData;
+  uint16_t dataSize = sizeof(gravity) * 2; // Allocate space for two gravity centers.
+  if (!SEGENV.allocateData(dataSize)) return mode_static(); //allocation failed
+  Gravity* gravcenBass = reinterpret_cast<Gravity*>(SEGENV.data);   // Gravity center for bass
+  Gravity* gravcenHigh = reinterpret_cast<Gravity*>(SEGENV.data + sizeof(Gravity)); // Gravity center for high frequencies
+
+  um_data_t *um_data;
+  if (!usermods.getUMData(&um_data, USERMOD_ID_AUDIOREACTIVE)) {
+    // add support for no audio
+    um_data = simulateSound(SEGMENT.soundSim);
+  }
+  uint8_t *fftResultLeft = (uint8_t*)um_data->u_data[2];
+  uint8_t *fftResultRight = (uint8_t*)um_data->u_data[11];
+
+  //Print all the FFT results every 1000 milliseconds
+  int currentMillis = millis();  
+  if (currentMillis - previousMillis >= 500) {
+    previousMillis = currentMillis;
+    Serial.printf("L: ");
+    for (int i = 0; i < 16; i++) {
+      Serial.printf("%d\t", fftResultLeft[i]);
+    }
+    Serial.println();
+    Serial.printf("R: ");
+    for (int i = 0; i < 16; i++) {
+      Serial.printf("%d\t", fftResultRight[i]);
+    }
+    Serial.println();
+    Serial.println();
+
+  }
+  float   FFT_MajorPeak = *(float*)um_data->u_data[4];
+  float   volumeSmth    = *(float*)um_data->u_data[0];
+
+  if (FFT_MajorPeak < 1) FFT_MajorPeak = 1;                                   // log10(0) is "forbidden" (throws exception)
+
+  if (SEGENV.call == 0) {
+    SEGENV.setUpLeds();   // WLEDMM use lossless getPixelColor()
+    SEGMENT.fill(BLACK);
+    SEGENV.aux0 = 0; // WLEDMM: last color index, to perform some color smoothing
+  }
+  SEGMENT.fadeToBlackBy(128);
+
+  uint8_t gravity = 8 - SEGMENT.speed/32;
+  int indexNew = (logf(FFT_MajorPeak) - MIN_FREQ_LOG) * 255.0f/(MAX_FREQ_LOG - MIN_FREQ_LOG);
+  indexNew = constrain(indexNew, 0, 255);
+  int palIndex = (indexNew + SEGENV.aux0) /2;
+
+  int totalSamples = 16; 
+  // Retrieve the intensity from the SEGMENT.
+  uint8_t intensity = SEGMENT.intensity;
+  float exponentialFactor = pow(0.5, intensity / 64);
+
+ 
+
+  //Print all values of fftResult
+  // Serial.printf("FFTResults: ");
+  // for (int i = 0; i < 16; i++) {
+  //   Serial.printf("%d\t", fftResult[i]);
+  // }
+  // Serial.println();
+  // Serial.println();
+
+  if(channel == 'B'){
+    channelData = fftResultLeft;
+  } else {
+    if (channel == 'L') {
+      channelData = fftResultLeft;
+    } else if (channel == 'R') {
+      channelData = fftResultRight;
+    }
+  }
+  
+
+  // Serial.printf("v: %d | ", (int)volumeRaw);
+  // for (int i = 0; i < 16; i++) {
+  //  Serial.printf("%d\t", fftResult[i]);
+  // }
+  // Serial.println();
+  int bassSensitivity = 100 + ((volumeSmth+1) * exponentialFactor);
+  int highSensitivity = 70 + ((volumeSmth+1) * exponentialFactor);
+  // Serial.print("expo: ");
+  // Serial.print(exponentialFactor);
+  // Serial.print("\t| volumeSmth: ");
+  // Serial.print(volumeSmth);
+  // Serial.print("\t| intensity: ");
+  // Serial.print(intensity);
+  // Serial.print("\t| bassSensitivity: ");
+  // Serial.print(bassSensitivity);
+  // Serial.print("\t| highSensitivity: ");
+  // Serial.print(highSensitivity);
+  // Serial.println();
+
+  // Calculate the frequency responses with intensity as a factor.
+  int tempsampBass = calculateResponse(channelData, 0, 1, bassSensitivity, intensity*3);
+  int tempsampHigh = calculateResponse(channelData, 10, 12, highSensitivity, intensity);
+
+  // Normalize and scale these responses to fit half of your LED segment.
+
+  tempsampHigh = map(tempsampHigh*2.0f, 0, 255, 0, SEGLEN/4+1);
+  tempsampBass = map(tempsampBass*2.0f, 0, 255, 0, SEGLEN/4+1);
+
+  // Ensure they don't exceed a quarter of the segment length.
+  tempsampHigh = constrain(tempsampHigh, 0, SEGLEN/4+1);
+  tempsampBass = constrain(tempsampBass, 0, SEGLEN/4+1);
+
+  // Define the centers for the bass and high effects.
+  int centerBass = SEGLEN/4;
+  int centerHigh = 3*SEGLEN/4;
+
+  // Apply the frequency responses around their respective centers.
+  applyFrequencyResponse(centerHigh+1, tempsampHigh, gravcenHigh, gravity, palIndex, 1);
+  applyFrequencyResponse(centerBass, tempsampBass, gravcenBass, gravity, palIndex, 0);
+
+  SEGENV.aux0 = indexNew;
+  return FRAMETIME;
+} // mode_subarufreq()
+
+uint16_t mode_subarufreq(void) {
+  return mode_subarufreq_base();
+} // mode_subarufreq()
+//Initialize mode_subarufreqleft which is a copy of mode_subarufreq with channel set to 'L'. This should be a pointer.
+uint16_t mode_subarufreqleft(void) {
+  return mode_subarufreq_base('L');
+} // mode_subarufreqleft()
+
+//Initialize mode_subarufreqright which is a copy of mode_subarufreq with channel set to 'R'. This should be a pointer.
+uint16_t mode_subarufreqright(void) {
+  return mode_subarufreq_base('R');
+} // mode_subarufreqright()
+static const char _data_FX_MODE_SUBARUFREQ[] PROGMEM = "SubaruFreq@Rate of fall,Sensitivity;!,!;!;1f;ix=128,m12=0,si=0"; // Pixels, Beatsin
+static const char _data_FX_MODE_SUBARUFREQLEFT[] PROGMEM = "SubaruFreq (L)@Rate of fall,Sensitivity;!,!;!;1f;ix=128,m12=0,si=0"; // Pixels, Beatsin
+static const char _data_FX_MODE_SUBARUFREQRIGHT[] PROGMEM = "SubaruFreq (R)@Rate of fall,Sensitivity;!,!;!;1f;ix=128,m12=0,si=0"; // Pixels, Beatsin
+
 
 //////////////////////
 //   ** Noisemove   //
@@ -8327,13 +8497,18 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_GRAVCENTER, &mode_gravcenter, _data_FX_MODE_GRAVCENTER);
   addEffect(FX_MODE_GRAVCENTRIC, &mode_gravcentric, _data_FX_MODE_GRAVCENTRIC);
   addEffect(FX_MODE_GRAVFREQ, &mode_gravfreq, _data_FX_MODE_GRAVFREQ);
+  addEffect(FX_MODE_SUBARUFREQ, &mode_subarufreq, _data_FX_MODE_SUBARUFREQ);
+
+  addEffect(FX_MODE_SUBARUFREQLEFT, &mode_subarufreqleft, _data_FX_MODE_SUBARUFREQLEFT);
+  addEffect(FX_MODE_SUBARUFREQRIGHT, &mode_subarufreqright, _data_FX_MODE_SUBARUFREQRIGHT);
+
   addEffect(FX_MODE_DJLIGHT, &mode_DJLight, _data_FX_MODE_DJLIGHT);
 
   addEffect(FX_MODE_BLURZ, &mode_blurz, _data_FX_MODE_BLURZ);
 
   addEffect(FX_MODE_FLOWSTRIPE, &mode_FlowStripe, _data_FX_MODE_FLOWSTRIPE);
 
-  addEffect(FX_MODE_WAVESINS, &mode_wavesins, _data_FX_MODE_WAVESINS);
+  addEffect(FX_MODE_WAVESINS, (WS2812FX::mode_ptr)mode_wavesins, _data_FX_MODE_WAVESINS);
   addEffect(FX_MODE_ROCKTAVES, &mode_rocktaves, _data_FX_MODE_ROCKTAVES);
 
   // --- 2D  effects ---
