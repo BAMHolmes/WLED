@@ -48,7 +48,7 @@ private:
   {
     JsonObject top = root[FPSTR(_name)];
     bool configComplete = !top.isNull();
-
+    Serial.println("Before config read: rearLength="+String(SUBARU_SEGMENT_CONFIG.rearLength));
     configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled);
     configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearLength);
     configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.leftLength);
@@ -60,10 +60,12 @@ private:
     configComplete &= getJsonValue(top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontLeftLength);
     configComplete &= getJsonValue(top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.scoopLength);
     configComplete &= getJsonValue(top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.grilleLength);
+    Serial.println("After config read: rearLength="+String(SUBARU_SEGMENT_CONFIG.rearLength));
+
 
     if (configComplete)
     {
-      ST = SubaruTelemetry();
+      SUBARU_SEGMENT_CONFIG.updateDimensions();
     }
     return configComplete;
   }
@@ -128,7 +130,7 @@ public:
   void setup()
   {
     effects.off.start();
-    ST.initializePins();
+    ST->initializePins();
     Serial.println("All outputs written to PCF8575");
   }
 
@@ -138,13 +140,25 @@ public:
    */
   void printSegmentDetails() {}
 
+  /**
+   * A method that prints the state of pins 0 - 38 on the ESP32 board
+  */
+  void printInputPins(){
+    for(int i = 0; i < 39; i++){
+      Serial.print("Pin ");
+      Serial.print(i);
+      Serial.print(" is ");
+      Serial.println(digitalRead(i));
+    }
+  }
   void printDetailsPeriodically()
   {
     static unsigned long lastPrintTime = 0;
-    const unsigned long printInterval = 5000; // 5 seconds in milliseconds
+    const unsigned long printInterval = 3000; // 5 seconds in milliseconds
     if (millis() - lastPrintTime >= printInterval)
     {
       printSegmentDetails();
+      //printInputPins();
       lastPrintTime = millis();
     }
   }
@@ -154,9 +168,21 @@ public:
 
   void loop()
   {
+    //delay(1000);
     
-    if (!bri || !enabled || !effects.checkSegmentIntegrity() || strip.isUpdating())
+    if (!bri || !enabled || !effects.checkSegmentIntegrity() || strip.isUpdating()){
+      //Print the string "Not running" along with all the values of "bri" and "enabled"
+      // Serial.print("Not running. bri:");
+      // Serial.print(bri);
+      // Serial.print(", enabled:");
+      // Serial.print(enabled);
+      // Serial.print(", checkSegmentIntegrity:");
+      // Serial.print(effects.checkSegmentIntegrity());
+      // Serial.print(", updating:");
+      // Serial.println(strip.isUpdating());
+
       return;
+    }
 
     /**
      * Update the state of all things Subaru
@@ -173,62 +199,62 @@ public:
     /**
      * BRAKE EFFECT SEQUENCE
      **********************/
-    if(ST.brakeEngaged()){
+    if(ST->brake.activated()){
         queueManager.addEffectToQueue(effects.brake); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * REVERSE EFFECT SEQUENCE
      * **********************/
-    if(ST.reverseEngaged()){
+    if(ST->reverse.activated()){
       queueManager.addEffectToQueue(effects.reverse); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * LEFT EFFECT SEQUENCE
      **********************/
-    if(ST.leftIndicatorOn()){
+    if(ST->left.activated()){
       queueManager.addEffectToQueue(effects.leftTurn); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * RIGHT EFFECT SEQUENCE
      **********************/
-    if(ST.rightIndicatorOn()){
+    if(ST->right.activated()){
       queueManager.addEffectToQueue(effects.rightTurn); // 10 seconds run time, 0.5 seconds transition 
     }
 
     /**
      * DOOR EFFECT SEQUENCE
      **********************/
-    if(ST.doorOpen()){
+    if(ST->doorOpen.activated()){
       queueManager.addEffectToQueue(effects.doorOpen);
     }
 
     /**
      * UNLOCK EFFECT SEQUENCE
      ************************/
-    if(ST.unlocked()){
+    if(ST->doorUnlock.activated()){
       queueManager.addEffectToQueue(effects.unlock); // 10 seconds run time, 0.5 seconds transition
     }
 
     /**
      * LOCK EFFECT SEQUENCE
      **********************/
-    if(ST.locked()){
+    if(ST->doorLock.activated()){
       queueManager.addEffectToQueue(effects.lock); // 10 seconds run time, 0.5 seconds transition
     } 
 
     /**
      * IGNITION EFFECT SEQUENCE
      **************************/
-    if(ST.ignitionOn()){
+    if(ST->ignition.activated()){
       queueManager.addEffectToQueue(effects.ignition); // 10 seconds run time, 0.5 seconds transition
     }
 
     queueManager.processQueue();
     
-    ST.readTelemetry();
+    ST->readTelemetry();
   }
 };
 const char Subaru::_name[] = "Subaru";

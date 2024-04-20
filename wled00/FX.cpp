@@ -7519,22 +7519,30 @@ uint16_t mode_subarufreq_base(char channel = 'B') {
   uint8_t *fftResultRight = (uint8_t*)um_data->u_data[11];
 
   //Print all the FFT results every 1000 milliseconds
-  int currentMillis = millis();  
-  if (currentMillis - previousMillis >= 500) {
-    previousMillis = currentMillis;
-    Serial.printf("L: ");
-    for (int i = 0; i < 16; i++) {
-      Serial.printf("%d\t", fftResultLeft[i]);
-    }
-    Serial.println();
-    Serial.printf("R: ");
-    for (int i = 0; i < 16; i++) {
-      Serial.printf("%d\t", fftResultRight[i]);
-    }
-    Serial.println();
-    Serial.println();
+  //ARH: Comment this out...
+  // int currentMillis = millis();  
+  // if (currentMillis - previousMillis >= 500) {
+  //   previousMillis = currentMillis;
+  //   for(int i = 0; i < 39; i++){
+  //     Serial.print("Pin ");
+  //     Serial.print(i);
+  //     Serial.print(" is ");
+  //     Serial.println(digitalRead(i));
+  //   }
+  
+  //   // Serial.printf("L: ");
+  //   // for (int i = 0; i < 16; i++) {
+  //   //   Serial.printf("%d\t", fftResultLeft[i]);
+  //   // }
+  //   // Serial.println();
+  //   // Serial.printf("R: ");
+  //   // for (int i = 0; i < 16; i++) {
+  //   //   Serial.printf("%d\t", fftResultRight[i]);
+  //   // }
+  //   // Serial.println();
+  //   // Serial.println();
 
-  }
+  // }
   float   FFT_MajorPeak = *(float*)um_data->u_data[4];
   float   volumeSmth    = *(float*)um_data->u_data[0];
 

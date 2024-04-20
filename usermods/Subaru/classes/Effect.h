@@ -3,6 +3,7 @@
 
 #include "ColorPrint.h"
 #include "SubaruTelemetry.h"
+
 #include "SegCon.h"
 #include <functional>
 enum SwitchType
@@ -17,10 +18,10 @@ enum SwitchType
 class Effect
 {
 public:
-    using TriggerCondition = bool (SubaruTelemetry::*)();
+    //using TriggerCondition = bool (PinState::*)() const;
 
     String name;
-    TriggerCondition triggerCondition;
+    std::function<bool()> triggerCondition;
     std::vector<int> segmentIDs;
     uint8_t mode;
     bool reverse;
@@ -39,8 +40,8 @@ public:
     String checksum;
     Effect(String n)
         : name(n),
-          triggerCondition(&SubaruTelemetry::trueStatus),
-          segmentIDs(DEFAULT_SEGMENT_IDS),
+          triggerCondition([&]() -> bool { return true; }),
+          segmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
           transitionSpeed(INSTANT_TRANSITION),
           colors{0x000000, 0x000000, 0x000000},
@@ -61,8 +62,8 @@ public:
     }
     Effect()
         : name("Default"),
-          triggerCondition(&SubaruTelemetry::trueStatus),
-          segmentIDs(DEFAULT_SEGMENT_IDS),
+          triggerCondition([&]() -> bool { return true; }),
+          segmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
           reverse(false),
           transitionSpeed(INSTANT_TRANSITION),
@@ -82,7 +83,7 @@ public:
         checksum = calculateChecksum();
     }
 
-    Effect(String n, TriggerCondition tc, std::vector<int> seg, uint8_t m, bool rev, int ts, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, uint8_t i, bool pw = true)
+    Effect(String n, std::function<bool()> tc, std::vector<int> seg, uint8_t m, bool rev, int ts, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, uint8_t i, bool pw = true)
         : name(n),
           triggerCondition(tc),
           segmentIDs(seg),
@@ -113,7 +114,7 @@ public:
         return *this;
     }
 
-    Effect &setTriggerCondition(TriggerCondition tc)
+    Effect &setTriggerCondition(std::function<bool()> tc)
     {
         triggerCondition = tc;
         return *this;
@@ -198,9 +199,17 @@ public:
     }
     void start(int segmentID = -1)
     {
+        //Print the name of the effect and the segmentID
+        p.print("Starting [" + name + "] on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        for (const auto &segmentID : segmentIDs)
+        {
+            p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        }
+        p.println(".", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+
         if (segmentIDs.size() > 0)
         {
-            ST.ensureRelayOn();
+            ST->ensureRelayOn();
             triggerEffect(segmentID); // Actual function to start the effect
             isRunning = true;
         }
@@ -223,9 +232,9 @@ public:
     bool checkTrigger()
     {
         // Call triggerCondition using ST from SubaruTelemetry and return boolean result
-        return (ST.*triggerCondition)();
+        return triggerCondition();
 
-        // return (ST.*triggerCondition)();
+        // return (ST->*triggerCondition)();
     }
     void triggerEffect(int segmentID)
     {
@@ -320,8 +329,8 @@ public:
 
     EffectCollection(){
         doorOpen = Effect("Door Open")
-            .setTriggerCondition(&SubaruTelemetry::doorStatus)
-            .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+            .setTriggerCondition([&]() -> bool { return ST->doorOpen.isInputActive(); })
+            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
             .setMode(FX_MODE_STATIC)
             .setTransitionSpeed(SLOW_TRANSITION)
             .setColor(0xFFC68C)
@@ -333,7 +342,7 @@ public:
             .setChecksum();
 
         leftTurn = Effect("Left Turn")
-            .setTriggerCondition(&SubaruTelemetry::leftIndicatorStatus)
+            .setTriggerCondition([&]() -> bool { return ST->left.isInputActive(); })
             .setSegmentIDs({LEFT_SEGMENT})
             .setMode(FX_MODE_LOADING)
             .setTransitionSpeed(INSTANT_TRANSITION)
@@ -346,7 +355,7 @@ public:
             .setChecksum();
 
         rightTurn = Effect("Right Turn")
-            .setTriggerCondition(&SubaruTelemetry::rightIndicatorStatus)
+            .setTriggerCondition([&]() -> bool { return ST->right.isInputActive(); })
             .setSegmentIDs({RIGHT_SEGMENT})
             .setMode(FX_MODE_LOADING)
             .setTransitionSpeed(INSTANT_TRANSITION)
@@ -359,7 +368,7 @@ public:
             .setChecksum();
 
         brake = Effect("Brake Engaged")
-            .setTriggerCondition(&SubaruTelemetry::brakeStatus)
+            .setTriggerCondition([&]() -> bool { return ST->brake.isInputActive(); })
             .setSegmentIDs({REAR_SEGMENT})
             .setMode(FX_MODE_STATIC)
             .setTransitionSpeed(INSTANT_TRANSITION)
@@ -372,7 +381,7 @@ public:
             .setChecksum();
 
         reverse = Effect("Reverse Engaged")
-            .setTriggerCondition(&SubaruTelemetry::reverseStatus)
+            .setTriggerCondition([&]() -> bool { return ST->reverse.isInputActive(); })
             .setSegmentIDs({REAR_SEGMENT})
             .setMode(FX_MODE_STATIC)
             .setTransitionSpeed(INSTANT_TRANSITION)
@@ -385,8 +394,8 @@ public:
             .setChecksum();
 
         ignition = Effect("Ignition On")
-            .setTriggerCondition(&SubaruTelemetry::ignitionStatus)
-            .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+            .setTriggerCondition([&]() -> bool { return ST->ignition.isInputActive(); })
+            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
             .setMode(FX_MODE_LOADING)
             .setTransitionSpeed(MEDIUM_TRANSITION)
             .setColor(0xFFC68C)
@@ -398,8 +407,8 @@ public:
             .setChecksum();
 
         lock = Effect("Car Locked")
-            .setTriggerCondition(&SubaruTelemetry::lockedStatus)
-            .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+            .setTriggerCondition([&]() -> bool { return ST->doorLock.isInputActive(); })
+            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
             .setMode(FX_MODE_GRADIENT)
             .setReverse(false)
             .setTransitionSpeed(SLOW_TRANSITION)
@@ -412,8 +421,8 @@ public:
             .setChecksum();
 
         unlock = Effect("Car Unlocked")
-            .setTriggerCondition(&SubaruTelemetry::unlockedStatus)
-            .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+            .setTriggerCondition([&]() -> bool { return ST->doorUnlock.isInputActive(); })
+            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
             .setMode(FX_MODE_GRADIENT)
             .setReverse(true)
             .setTransitionSpeed(MEDIUM_TRANSITION)
@@ -440,8 +449,8 @@ public:
         //     .setChecksum();
 
         off = Effect("Segment Off")
-            .setTriggerCondition(&SubaruTelemetry::ignitionStatus)
-            .setSegmentIDs(DEFAULT_SEGMENT_IDS)
+            .setTriggerCondition([&]() -> bool { return ST->ignition.isInputActive(); })
+            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
             .setMode(FX_MODE_STATIC)
             .setTransitionSpeed(SLOW_TRANSITION)
             .setColor(0x000000)
@@ -520,7 +529,7 @@ Effect::Effect(int seg)
     colors[0] = segment.colors[0];
     colors[1] = segment.colors[1];
     colors[2] = segment.colors[2];
-    triggerCondition = &SubaruTelemetry::trueStatus;
+    triggerCondition = [&]() -> bool { return true; };
     checksum = calculateChecksum();
     // If checksum matches a preset, return a reference to the preset
     if (isPreset(effects.presetChecksums))

@@ -13,19 +13,21 @@
 #include <thread>
 /**
  * @brief Class for managing the queue of effects for each segment.
- * 
+ *
  */
 class QueueManager
 {
 
-public: 
-   QueueManager(){
+public:
+    QueueManager()
+    {
         effects.printAllChecksums();
         for (int segmentID : DEFAULT_GROUND_SEGMENT_IDS)
         {
             segmentPowerStatus[segmentID] = false;
-        }    
+        }
     }
+
 private:
     std::map<int, std::deque<Effect>> effectsPerSegment;
     std::map<int, Effect *> activeEffectsPerSegment;
@@ -48,7 +50,7 @@ private:
 public:
     /**
      * @brief Checks the LED segments and updates them if necessary.
-     * 
+     *
      */
     void checkSegmentsAndUpdate()
     {
@@ -60,7 +62,7 @@ public:
         for (int segmentID : DEFAULT_GROUND_SEGMENT_IDS)
         {
             Effect currentEffectOnSegment = Effect(segmentID);
-            //Check if activeEffectsPerSegment[segmentID] has a value
+            // Check if activeEffectsPerSegment[segmentID] has a value
             bool stripHasAnActivePresetEffect = (activeEffectsPerSegment.find(segmentID) != activeEffectsPerSegment.end()) && isPresetEffect(activeEffectsPerSegment[segmentID]);
 
             if (!isPresetEffect(currentEffectOnSegment))
@@ -91,15 +93,19 @@ public:
                 allSegmentsPoweredOff = false;
             }
         }
-           // If all segments are powered off, start timer to trigger ST.turnOffRelay() after 30 seconds
-        if (allSegmentsPoweredOff) {
+        // If all segments are powered off, start timer to trigger ST->turnOffRelay() after 30 seconds
+        if (allSegmentsPoweredOff)
+        {
             // If all segments are powered off, check if it's time to turn off the relay
-            if (elapsedTime >= powerOffDelay) {
+            if (elapsedTime >= powerOffDelay)
+            {
                 // It's time to turn off the relay, call the turnOffRelay function here
-                ST.turnOffGroundLEDRelay();
+                ST->turnOffGroundLEDRelay();
                 lastSegmentCheckTime = currentTime; // Reset the timer
             }
-        } else {
+        }
+        else
+        {
             // If any segment is powered back on, cancel the power off timer
             lastSegmentCheckTime = currentTime;
         }
@@ -167,18 +173,17 @@ public:
         {
             int segmentID = pair.first;
             std::deque<Effect> &queue = pair.second;
-            //Check if the queue is empty or if the current effect is not a preset
-            if(queue.empty() || !isPresetEffect(queue.front()))
+            // Check if the queue is empty or if the current effect is not a preset
+            if (queue.empty() || !isPresetEffect(queue.front()))
             {
-                //p.println("Queue on segment " + String(segmentID) + " is empty empty or " + String(queue.front().name) + " is not a preset, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+                // p.println("Queue on segment " + String(segmentID) + " is empty empty or " + String(queue.front().name) + " is not a preset, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
                 continue;
             }
             // Process the first effect in the queue if it's not already running
             Effect *currentEffect = &queue.front();
 
             bool triggering = currentEffect->checkTrigger();
-            p.println("Effect [" + String(currentEffect->name) + "] on segment " + String(segmentID) + " is triggering: " + String(triggering), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
-            //p.println("Brake Status: " + String(triggering));
+            // p.println("Brake Status: " + String(triggering));
             bool active = triggering || (currentTime - currentEffect->startTime < currentEffect->runTime);
             bool expired = (currentTime - currentEffect->startTime >= currentEffect->runTime);
 
@@ -188,7 +193,12 @@ public:
                 p.println("Starting preset effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
                 activeEffectsPerSegment[segmentID] = &currentEffect->setPower(true);
                 currentEffect->start();
-            }else if (expired && !triggering)
+            }
+            else if (!expired && triggering)
+            {
+                p.println("TRIGGERED: Effect [" + String(currentEffect->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            }
+            else if (expired && !triggering)
             {
                 p.println("[" + String(currentEffect->name) + "] on segment " + String(segmentID) + " has expired, stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
                 // Move to the next effect if the current one has finished
@@ -202,7 +212,7 @@ public:
                 if (queue.empty())
                 {
                     p.println("Queue on segment " + String(segmentID) + " is empty, starting off effect...", ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
- 
+
                     Effect offEffect = effects.off.setPower(false).setColor(0x000000);
                     offEffect.start(segmentID);
                 }
@@ -210,17 +220,19 @@ public:
                 {
                     Serial.println("Stopping checksum: " + String(currentEffect->checksum) + ".");
                     currentEffect = &queue.front().setInterimTransitionSpeed(currentEffectCache->transitionSpeed);
-                    if(!currentEffect->power){
+                    if (!currentEffect->power)
+                    {
                         currentEffect = &currentEffectCache->setName("Shut Down").setPower(false).setChecksum();
                         activeEffectsPerSegment.erase(segmentID);
-                    }else{
+                    }
+                    else
+                    {
                         activeEffectsPerSegment[segmentID] = currentEffect;
                     }
-                    //p.println("Starting checksum: " + String(currentEffect->checksum), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
-                    //p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
+                    // p.println("Starting checksum: " + String(currentEffect->checksum), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+                    // p.println("Starting next effect in queue (" + String(currentEffect->name) + ") on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_CYAN);
 
                     currentEffect->start(segmentID);
-                    
                 }
             }
         }

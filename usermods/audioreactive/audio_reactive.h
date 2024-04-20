@@ -558,13 +558,13 @@ void FFTcode(void * parameter)
     // get a fresh batch of samples from I2S
     if (audioSource) audioSource->getSamples(vReal, samplesFFT);
     //Print all samples in vReal. 16 per line
-    for (int i = 0; i < samplesFFT; i++) {
-     Serial.print(vReal[i]);
-     Serial.print(" ");
-     if ((i % 16) == 15) Serial.println();
-    }
-    Serial.println();
-    Serial.println();
+    // for (int i = 0; i < samplesFFT; i++) {
+    //  Serial.print(vReal[i]);
+    //  Serial.print(" ");
+    //  if ((i % 16) == 15) Serial.println();
+    // }
+    // Serial.println();
+    // Serial.println();
 
     //Split the left and right channel data into two separate arrays like vRealLeft and vRealRight. 
     //Left channel is odd number samples and right channel is even number samples.
