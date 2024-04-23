@@ -18,7 +18,7 @@ enum SwitchType
 class Effect
 {
 public:
-    //using TriggerCondition = bool (PinState::*)() const;
+    // using TriggerCondition = bool (PinState::*)() const;
 
     String name;
     std::function<bool()> triggerCondition;
@@ -38,10 +38,13 @@ public:
     uint8_t palette;
     uint8_t intensity;
     String checksum;
+    String weakChecksum;
+    bool isPreset();
     Effect(String n)
         : name(n),
-          triggerCondition([&]() -> bool { return true; }),
-          segmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS),
+          triggerCondition([this]() -> bool
+                           { return true; }),
+          segmentIDs(ALL_SUBARU_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
           transitionSpeed(INSTANT_TRANSITION),
           colors{0x000000, 0x000000, 0x000000},
@@ -54,16 +57,19 @@ public:
           remainingRuntime(0),
           palette(0),
           intensity(255),
-          checksum("") // Ensure checksum is calculated last
+          checksum(""), // Ensure checksum is calculated last
+          weakChecksum("")
     {
         reverse = false;
         interimTransitionSpeed = -1;
         checksum = calculateChecksum();
+        weakChecksum = calculateChecksum(false);
     }
     Effect()
         : name("Default"),
-          triggerCondition([&]() -> bool { return true; }),
-          segmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS),
+          triggerCondition([this]() -> bool
+                           { return true; }),
+          segmentIDs(ALL_SUBARU_SEGMENT_IDS),
           mode(FX_MODE_STATIC),
           reverse(false),
           transitionSpeed(INSTANT_TRANSITION),
@@ -77,10 +83,12 @@ public:
           remainingRuntime(0),
           palette(0),
           intensity(255),
-          checksum("") // Ensure checksum is calculated last
+          checksum(""), // Ensure checksum is calculated last
+          weakChecksum("")
     {
         interimTransitionSpeed = -1;
         checksum = calculateChecksum();
+        weakChecksum = calculateChecksum(false);
     }
 
     Effect(String n, std::function<bool()> tc, std::vector<int> seg, uint8_t m, bool rev, int ts, uint32_t c1, uint8_t s, uint8_t f, unsigned long r, uint8_t p, uint8_t i, bool pw = true)
@@ -99,14 +107,15 @@ public:
           runTime(r),
           palette(p),
           intensity(i),
-          checksum("") // Ensure checksum is calculated last
+          checksum(""), // Ensure checksum is calculated last
+          weakChecksum("")
     {
         interimTransitionSpeed = -1;
         checksum = calculateChecksum();
+        weakChecksum = calculateChecksum(false);
     }
-    /** Construct an effect from a Segment ID */
+    Effect(Segment *segment);
     Effect(int seg);
-
     // Builder methods
     Effect &setName(const String &n)
     {
@@ -195,23 +204,29 @@ public:
     Effect &setChecksum()
     {
         checksum = calculateChecksum();
+        weakChecksum = calculateChecksum(false);
         return *this;
     }
+
     void start(int segmentID = -1)
     {
-        //Print the name of the effect and the segmentID
-        p.print("Starting [" + name + "] on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
-        for (const auto &segmentID : segmentIDs)
-        {
-            p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
-        }
-        p.println(".", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
-
+        // Print the name of the effect and the segmentID
         if (segmentIDs.size() > 0)
         {
-            ST->ensureRelayOn();
-            triggerEffect(segmentID); // Actual function to start the effect
+            p.print("Starting [" + name + "] on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+
+            for (const auto &segmentID : segmentIDs)
+            {
+                p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+                triggerEffect(segmentID); // Actual function to start the effect
+                SegCon::getInstance()->getSegment(segmentID).activateRelay();
+            }
+            p.println(".", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
             isRunning = true;
+        }
+        else
+        {
+            p.println("No segments assigned to effect [" + name + "].", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
         }
     }
 
@@ -226,6 +241,7 @@ public:
         for (const auto &segmentID : segmentIDs)
         {
             p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+            SegCon::getInstance()->getSegment(segmentID).activateRelay();
         }
         p.println(".", ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
     }
@@ -262,56 +278,64 @@ public:
             strip.setTransition(transitionSpeed);
             strip.setMode(segmentID, mode);
             strip.setBrightness(255, true);
-            SegCon::seg(segmentID).setOption(SEG_OPTION_ON, on);
-            SegCon::seg(segmentID).setOption(SEG_OPTION_REVERSED, reverse);
-            SegCon::seg(segmentID).fade_out(fade);
-            SegCon::seg(segmentID).intensity = intensity;
-            SegCon::seg(segmentID).setColor(0, color1);
-            SegCon::seg(segmentID).setColor(1, color2);
-            SegCon::seg(segmentID).setColor(2, color3);
-            SegCon::seg(segmentID).setPalette(palette);
-            SegCon::seg(segmentID).speed = speed;
-            SegCon::seg(segmentID).reverse = reverse;
-            if(interimTransitionSpeed != -1){
-                SegCon::seg(segmentID).startTransition(interimTransitionSpeed);
+            strip.getSegment(segmentID).setOption(SEG_OPTION_ON, on);
+            strip.getSegment(segmentID).setOption(SEG_OPTION_REVERSED, reverse);
+            strip.getSegment(segmentID).fade_out(fade);
+            strip.getSegment(segmentID).intensity = intensity;
+            strip.getSegment(segmentID).setColor(0, color1);
+            strip.getSegment(segmentID).setColor(1, color2);
+            strip.getSegment(segmentID).setColor(2, color3);
+            strip.getSegment(segmentID).setPalette(palette);
+            strip.getSegment(segmentID).speed = speed;
+            strip.getSegment(segmentID).reverse = reverse;
+            if (interimTransitionSpeed != -1)
+            {
+                strip.getSegment(segmentID).startTransition(interimTransitionSpeed);
                 interimTransitionSpeed = -1;
-            }else{
-                SegCon::seg(segmentID).startTransition(transitionSpeed);
+            }
+            else
+            {
+                strip.getSegment(segmentID).startTransition(transitionSpeed);
             }
             strip.trigger();
         }
         p.println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
     }
-    bool isPreset(const std::array<String, 9> &presetChecksums) const
-    {
-        for (const auto &preset : presetChecksums)
-        {
-            if (checksum == preset)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+
+    // bool isPreset(const std::array<String, 9> &presetChecksums) const
+    // {
+    //     for (const auto &preset : presetChecksums)
+    //     {
+    //         if (checksum == preset)
+    //         {
+    //             return true;
+    //         }
+    //     }
+    //     return false;
+    // }
 
 private:
-    String calculateChecksum() const
+    String calculateChecksum(bool useName = true) const
     {
         // Calculate the checksum, a string of the "mode", "colors", "speed", "palette", and "power" combined.
         //  This is used to identify the effect and prevent duplicates from being added to the queue
         // A single checksum should be generated from each segmentID
 
         String checksum = String(mode);
-        checksum += ":" + String(name);
-        checksum += ":" + String(colors[0]);
-        checksum += ":" + String(speed);
-        checksum += ":" + String(palette);
-        checksum += ":" + String(power);
-        checksum += ":" + String(intensity);
+        if (useName)
+        {
+            checksum += ":" + String(name);
+        }
+        checksum += ":[c0=" + String(colors[0]) + ";c1=" + String(colors[1]) + ";c2=" + String(colors[2]) + "]";
+        checksum += ":speed=" + String(speed);
+        checksum += ":palette=" + String(palette);
+        checksum += ":power=" + String(power);
+        checksum += ":intesity=" + String(intensity);
 
         return checksum;
     }
 };
+
 class EffectCollection
 {
 public:
@@ -326,113 +350,147 @@ public:
     Effect off;
 
     std::array<String, 9> presetChecksums;
+    std::map<String, Effect *> effectMap;
+    std::map<String, Effect *> weakEffectMap;
 
-    EffectCollection(){
+    EffectCollection()
+    {
+        initEffects();
+        effectMap[doorOpen.checksum] = &doorOpen;
+        effectMap[leftTurn.checksum] = &leftTurn;
+        effectMap[rightTurn.checksum] = &rightTurn;
+        effectMap[brake.checksum] = &brake;
+        effectMap[reverse.checksum] = &reverse;
+        effectMap[ignition.checksum] = &ignition;
+        effectMap[unlock.checksum] = &unlock;
+        effectMap[lock.checksum] = &lock;
+        effectMap[off.checksum] = &off;
+
+        weakEffectMap[doorOpen.weakChecksum] = &doorOpen;
+        weakEffectMap[leftTurn.weakChecksum] = &leftTurn;
+        weakEffectMap[rightTurn.weakChecksum] = &rightTurn;
+        weakEffectMap[brake.weakChecksum] = &brake;
+        weakEffectMap[reverse.weakChecksum] = &reverse;
+        weakEffectMap[ignition.weakChecksum] = &ignition;
+        weakEffectMap[unlock.weakChecksum] = &unlock;
+        weakEffectMap[lock.weakChecksum] = &lock;
+        weakEffectMap[off.weakChecksum] = &off;
+    }
+    void initEffects()
+    {
         doorOpen = Effect("Door Open")
-            .setTriggerCondition([&]() -> bool { return ST->doorOpen.isInputActive(); })
-            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
-            .setMode(FX_MODE_STATIC)
-            .setTransitionSpeed(SLOW_TRANSITION)
-            .setColor(0xFFC68C)
-            .setSpeed(255)
-            .setFade(255)
-            .setRunTime(10000)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                       .setTriggerCondition([this]() -> bool
+                                            { return ST->doorOpen.isInputActive(); })
+                       .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                       .setMode(FX_MODE_STATIC)
+                       .setTransitionSpeed(SLOW_TRANSITION)
+                       .setColor(0xFFC68C)
+                       .setSpeed(255)
+                       .setFade(255)
+                       .setRunTime(30000)
+                       .setPalette(0)
+                       .setIntensity(255)
+                       .setChecksum();
 
         leftTurn = Effect("Left Turn")
-            .setTriggerCondition([&]() -> bool { return ST->left.isInputActive(); })
-            .setSegmentIDs({LEFT_SEGMENT})
-            .setMode(FX_MODE_LOADING)
-            .setTransitionSpeed(INSTANT_TRANSITION)
-            .setColor(0xFFAA00)
-            .setSpeed(225)
-            .setFade(255)
-            .setRunTime(3000)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                       .setTriggerCondition([this]() -> bool
+                                            { return ST->left.isInputActive(); })
+                       .setSegmentIDs({LEFT_SEGMENT})
+                       .setMode(FX_MODE_LOADING)
+                       .setTransitionSpeed(INSTANT_TRANSITION)
+                       .setColor(0xFFAA00)
+                       .setSpeed(225)
+                       .setFade(255)
+                       .setRunTime(3000)
+                       .setPalette(0)
+                       .setIntensity(255)
+                       .setChecksum();
 
         rightTurn = Effect("Right Turn")
-            .setTriggerCondition([&]() -> bool { return ST->right.isInputActive(); })
-            .setSegmentIDs({RIGHT_SEGMENT})
-            .setMode(FX_MODE_LOADING)
-            .setTransitionSpeed(INSTANT_TRANSITION)
-            .setColor(0xFFAA00)
-            .setSpeed(225)
-            .setFade(255)
-            .setRunTime(3000)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                        .setTriggerCondition([this]() -> bool
+                                             { return ST->right.isInputActive(); })
+                        .setSegmentIDs({RIGHT_SEGMENT})
+                        .setMode(FX_MODE_LOADING)
+                        .setTransitionSpeed(INSTANT_TRANSITION)
+                        .setColor(0xFFAA00)
+                        .setSpeed(225)
+                        .setFade(255)
+                        .setRunTime(3000)
+                        .setPalette(0)
+                        .setIntensity(255)
+                        .setChecksum();
 
         brake = Effect("Brake Engaged")
-            .setTriggerCondition([&]() -> bool { return ST->brake.isInputActive(); })
-            .setSegmentIDs({REAR_SEGMENT})
-            .setMode(FX_MODE_STATIC)
-            .setTransitionSpeed(INSTANT_TRANSITION)
-            .setColor(0xFF0000)
-            .setSpeed(255)
-            .setFade(255)
-            .setRunTime(0)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                         { return ST->brake.isInputActive(); })
+                    .setSegmentIDs({REAR_SEGMENT})
+                    .setMode(FX_MODE_STATIC)
+                    .setTransitionSpeed(INSTANT_TRANSITION)
+                    .setColor(0xFF0000)
+                    .setSpeed(255)
+                    .setFade(255)
+                    .setRunTime(0)
+                    .setPalette(0)
+                    .setIntensity(255)
+                    .setChecksum();
 
         reverse = Effect("Reverse Engaged")
-            .setTriggerCondition([&]() -> bool { return ST->reverse.isInputActive(); })
-            .setSegmentIDs({REAR_SEGMENT})
-            .setMode(FX_MODE_STATIC)
-            .setTransitionSpeed(INSTANT_TRANSITION)
-            .setColor(0xFFC68C)
-            .setSpeed(255)
-            .setFade(255)
-            .setRunTime(0)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                      .setTriggerCondition([this]() -> bool
+                                           { return ST->reverse.isInputActive(); })
+                      .setSegmentIDs({REAR_SEGMENT})
+                      .setMode(FX_MODE_STATIC)
+                      .setTransitionSpeed(INSTANT_TRANSITION)
+                      .setColor(0xFFC68C)
+                      .setSpeed(255)
+                      .setFade(255)
+                      .setRunTime(0)
+                      .setPalette(0)
+                      .setIntensity(255)
+                      .setChecksum();
 
         ignition = Effect("Ignition On")
-            .setTriggerCondition([&]() -> bool { return ST->ignition.isInputActive(); })
-            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
-            .setMode(FX_MODE_LOADING)
-            .setTransitionSpeed(MEDIUM_TRANSITION)
-            .setColor(0xFFC68C)
-            .setSpeed(225)
-            .setFade(255)
-            .setRunTime(3000)
-            .setPalette(0)
-            .setIntensity(255)
-            .setChecksum();
+                       .setTriggerCondition([this]() -> bool
+                                            { return ST->ignition.isInputActive(); })
+                       .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                       .setMode(FX_MODE_LOADING)
+                       .setTransitionSpeed(MEDIUM_TRANSITION)
+                       .setColor(0xFFC68C)
+                       .setSpeed(225)
+                       .setFade(255)
+                       .setRunTime(3000)
+                       .setPalette(0)
+                       .setIntensity(255)
+                       .setChecksum();
 
         lock = Effect("Car Locked")
-            .setTriggerCondition([&]() -> bool { return ST->doorLock.isInputActive(); })
-            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
-            .setMode(FX_MODE_GRADIENT)
-            .setReverse(false)
-            .setTransitionSpeed(SLOW_TRANSITION)
-            .setColor(0xFF0000)
-            .setSpeed(170)
-            .setFade(255)
-            .setRunTime(3000)
-            .setPalette(0)
-            .setIntensity(128)
-            .setChecksum();
+                   .setTriggerCondition([this]() -> bool
+                                        { return ST->doorLock.isInputActive(); })
+                   .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                   .setMode(FX_MODE_GRADIENT)
+                   .setReverse(false)
+                   .setTransitionSpeed(SLOW_TRANSITION)
+                   .setColor(0xFF0000)
+                   .setSpeed(170)
+                   .setFade(255)
+                   .setRunTime(3000)
+                   .setPalette(0)
+                   .setIntensity(128)
+                   .setChecksum();
 
         unlock = Effect("Car Unlocked")
-            .setTriggerCondition([&]() -> bool { return ST->doorUnlock.isInputActive(); })
-            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
-            .setMode(FX_MODE_GRADIENT)
-            .setReverse(true)
-            .setTransitionSpeed(MEDIUM_TRANSITION)
-            .setColor(0x39E75F)
-            .setSpeed(170)
-            .setFade(255)
-            .setRunTime(3000)
-            .setPalette(0)
-            .setIntensity(128)
-            .setChecksum();
+                     .setTriggerCondition([this]() -> bool
+                                          { return ST->doorUnlock.isInputActive(); })
+                     .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                     .setMode(FX_MODE_GRADIENT)
+                     .setReverse(true)
+                     .setTransitionSpeed(MEDIUM_TRANSITION)
+                     .setColor(0x39E75F)
+                     .setSpeed(170)
+                     .setFade(255)
+                     .setRunTime(3000)
+                     .setPalette(0)
+                     .setIntensity(128)
+                     .setChecksum();
 
         // unlock = Effect("Car Unlocked")
         //     .setTriggerCondition(&SubaruTelemetry::unlockedStatus)
@@ -449,18 +507,19 @@ public:
         //     .setChecksum();
 
         off = Effect("Segment Off")
-            .setTriggerCondition([&]() -> bool { return ST->ignition.isInputActive(); })
-            .setSegmentIDs(DEFAULT_INTERIOR_SEGMENT_IDS)
-            .setMode(FX_MODE_STATIC)
-            .setTransitionSpeed(SLOW_TRANSITION)
-            .setColor(0x000000)
-            .setSpeed(255)
-            .setFade(255)
-            .setRunTime(0)
-            .setPalette(0)
-            .setIntensity(255)
-            .setPower(false)
-            .setChecksum();
+                  .setTriggerCondition([this]() -> bool
+                                       { return ST->ignition.isInputInactive(); })
+                  .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                  .setMode(FX_MODE_STATIC)
+                  .setTransitionSpeed(SLOW_TRANSITION)
+                  .setColor(0x000000)
+                  .setSpeed(255)
+                  .setFade(255)
+                  .setRunTime(0)
+                  .setPalette(0)
+                  .setIntensity(255)
+                  .setPower(false)
+                  .setChecksum();
 
         presetChecksums = {
             doorOpen.checksum,
@@ -471,8 +530,7 @@ public:
             ignition.checksum,
             unlock.checksum,
             lock.checksum,
-            off.checksum
-        };
+            off.checksum};
 
         printAllChecksums();
     }
@@ -502,74 +560,81 @@ public:
         }
         return false;
     }
-    bool checkSegmentIntegrity(){
-        return SC.checkSegmentIntegrity();
+    bool checkSegmentIntegrity()
+    {
+        return SegCon::getInstance()->checkSegmentIntegrity();
+    }
+    // Get an effect by its checksum
+    // Get an effect by its checksum
+    Effect *getEffectByChecksum(const String &checksum, bool weak = false)
+    {
+        // Choose the correct map based on the weak flag
+        auto &map = weak ? weakEffectMap : effectMap;
+
+        // Find the checksum in the map
+        auto it = map.find(checksum);
+        if (it != map.end())
+        {
+            // If found, return the associated Effect pointer
+            return it->second;
+        }
+
+        // If not found, return nullptr
+        return nullptr;
     }
 };
 
 EffectCollection effects;
 
+bool Effect::isPreset()
+{
+    return effects.isPreset(this);
+}
+/** Construct an effect from a Segment ID */
+Effect::Effect(Segment *segment)
+{
+    // Create a map of segment modes to effect names
+    std::map<uint8_t, String> modeMap = {
+        {FX_MODE_SUBARUFREQ, "Subaru Frequency"},
+        {FX_MODE_SUBARUFREQLEFT, "Subaru Frequency Left"},
+        {FX_MODE_SUBARUFREQRIGHT, "Subaru Frequency Right"}};
+    if (segment != nullptr)
+    {
+        // It appears that segment->id does not exist, so loop through the strip._segments array and find the segment that matches the pointer, then we will know the segment ID
+        for (int i = 0; i < strip._segments.size(); i++)
+        {
+            if (&strip._segments[i] == segment)
+            {
+                segmentIDs = {i};
+                break;
+            }
+        }
+        setTriggerCondition([this]() -> bool
+                            { return true; });
+        setSegmentIDs(segmentIDs);
+        setMode(segment->mode);
+        setReverse(segment->reverse);
+        setColor(segment->colors[0], segment->colors[1], segment->colors[2]);
+        setSpeed(segment->speed);
+        setPower(segment->on);
+        setPalette(segment->palette);
+        setIntensity(segment->intensity);
+        setRunTime(0); // Default to continuous run unless specified
+        std::string mode_data = strip.getModeData(segment->mode);
+        name = std::string(mode_data).substr(0, mode_data.find('@')).c_str();
+        setChecksum(); // Calculate checksum based on the current state
+    }
+    // Check if checksum matches a preset, if so return a reference to the preset
+    Effect *preset = effects.getEffectByChecksum(checksum, true);
+    if (preset != nullptr)
+    {
+        *this = *preset;
+    }
+}
 
 Effect::Effect(int seg)
 {
-    name = String("EFS" + String(seg));
-    Segment &segment = SegCon::seg(seg);
-    segmentIDs.push_back(seg);
-    mode = segment.mode;
-    reverse = segment.reverse;
-    transitionSpeed = strip.getTransition();
-    speed = segment.speed;
-    fade = 255;
-    power = segment.on;
-    startTime = 0;
-    isRunning = true;
-    runTime = 0;
-    palette = segment.palette;
-    intensity = segment.intensity;
-    colors[0] = segment.colors[0];
-    colors[1] = segment.colors[1];
-    colors[2] = segment.colors[2];
-    triggerCondition = [&]() -> bool { return true; };
-    checksum = calculateChecksum();
-    // If checksum matches a preset, return a reference to the preset
-    if (isPreset(effects.presetChecksums))
-    {
-        if (checksum == effects.doorOpen.checksum)
-        {
-            *this = effects.doorOpen;
-        }
-        else if (checksum == effects.leftTurn.checksum)
-        {
-            *this = effects.leftTurn;
-        }
-        else if (checksum == effects.rightTurn.checksum)
-        {
-            *this = effects.rightTurn;
-        }
-        else if (checksum == effects.brake.checksum)
-        {
-            *this = effects.brake;
-        }
-        else if (checksum == effects.reverse.checksum)
-        {
-            *this = effects.reverse;
-        }
-        else if (checksum == effects.ignition.checksum)
-        {
-            *this = effects.ignition;
-        }
-        else if (checksum == effects.unlock.checksum)
-        {
-            *this = effects.unlock;
-        }
-        else if (checksum == effects.lock.checksum)
-        {
-            *this = effects.lock;
-        }
-        else if (checksum == effects.off.checksum)
-        {
-            *this = effects.off;
-        }
-    }
-};
+    // Create an effect based on the segment ID
+    *this = Effect(&strip._segments[seg]);
+}
 #endif

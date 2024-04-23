@@ -4,6 +4,7 @@
 #include <FastLED.h>
 #include <const.h>
 #include <Wire.h>
+#include "PinState.h"
 // #include <BLEDevice.h>
 // #include <BLEUtils.h>
 // #include <BLEScan.h>
@@ -33,36 +34,6 @@
 #define ROCKER_DRIVER_LOW_PIN 23
 
 class SubaruTelemetry; // Forward declaration of SubaruTelemetry
-
-class PinState
-{
-public:
-    bool current = false;
-    unsigned int pinIndex; // Index of the pin in the expander
-
-    // Constructor to set pin index during initialization
-    PinState(unsigned int index) : pinIndex(index) {}
-
-    bool hasChanged() const { return current != previous; }
-    bool activated() const { return hasChanged() && !current; }
-    bool deactivated() const { return hasChanged() && current; }
-    bool isInputActive() const { return !current; }
-    bool isInputInactive() const { return current; }
-    bool isOutputActive() const { return current; }
-    bool isOutputInactive() const { return !current; }
-
-    void update(bool newState)
-    {
-        previous = current;
-        current = newState;
-    }
-
-    // Method to write the state to the PCF8575
-    void write(bool state);
-
-private:
-    bool previous = false;
-};
 
 class SubaruTelemetry
 {
@@ -168,26 +139,24 @@ public:
         SubaruTelemetry::getInstance()->printState("Wrote to PCF8575");
     }
 
-void refreshInputPins()
-{
-    // Output mask should only include the output pins P12 to P15 on the first PCF8575
-    uint16_t maskOutputsFirst = 0xF000;  // P12 to P15 are outputs
-    uint16_t maskOutputsSecond = 0x0000; // All pins on second PCF8575 are inputs, so no outputs to mask
+    void refreshInputPins()
+    {
+        // Output mask should only include the output pins P12 to P15 on the first PCF8575
+        uint16_t maskOutputsFirst = 0xF000;  // P12 to P15 are outputs
+        uint16_t maskOutputsSecond = 0x0000; // All pins on second PCF8575 are inputs, so no outputs to mask
 
-    // For input pins, generally set them to high to enable input mode
-    uint16_t defaultInputStateFirst = 0x0FFF; // Assume 1s for input pins P0 to P11 on the first PCF8575
+        // For input pins, generally set them to high to enable input mode
+        uint16_t defaultInputStateFirst = 0x0FFF; // Assume 1s for input pins P0 to P11 on the first PCF8575
 
-    // Combine the current state of output pins with the default state for input pins
-    // For the first expander, mask the outputs and set the rest as inputs
-    uint16_t dataFirst = (pinState & maskOutputsFirst) | defaultInputStateFirst;
+        // Combine the current state of output pins with the default state for input pins
+        // For the first expander, mask the outputs and set the rest as inputs
+        uint16_t dataFirst = (pinState & maskOutputsFirst) | defaultInputStateFirst;
 
-    // For the second expander, since all are inputs, write 0xFFFF
-    uint16_t dataSecond = 0xFFFF; // Sets all pins to high (input mode)
+        // For the second expander, since all are inputs, write 0xFFFF
+        uint16_t dataSecond = 0xFFFF; // Sets all pins to high (input mode)
 
-    SubaruTelemetry::writePCF8575(dataFirst, dataSecond);
-}
-
-
+        SubaruTelemetry::writePCF8575(dataFirst, dataSecond);
+    }
 
     void initializePins()
     {
@@ -271,7 +240,13 @@ void refreshInputPins()
     }
     // You would call refreshInputPins() periodically or after an event like this:
     // timer.every(1000, refreshInputPins); // Using a hypothetical timer library to call every 1000 ms
-
+    void turnOffAllRelays()
+    {
+        turnOffGroundLEDRelay();
+        turnOffInteriorLEDRelay();
+        turnOffProjectionRelay();
+        turnOffEngineRelay();
+    }
     void turnOffGroundLEDRelay()
     {
         Serial.println("Turning off Ground Relay");
@@ -447,9 +422,21 @@ void refreshInputPins()
 // Now define methods that depend on the complete definition of SubaruTelemetry
 void PinState::write(bool state)
 {
-    Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(state));
-    current = state;
-    SubaruTelemetry::writePin(pinIndex, state); // Pass the correct pin index and state
+    if (state)
+    {
+        if (!activationCount++)
+        {
+            current = true;
+            SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
+            Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
+        }
+    }
+    else if (activationCount && !--activationCount)
+    {
+        current = false;
+        SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
+        Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
+    }
 }
 
 void SubaruTelemetry::writePin(unsigned int pin, bool state)

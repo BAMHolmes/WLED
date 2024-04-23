@@ -2,6 +2,9 @@
 #define SEGCON_H
 
 #include "wled.h"
+#include "SubaruSegment.h"
+#include "SubaruTelemetry.h"
+
 #define REAR_SEGMENT 0
 #define LEFT_SEGMENT 1
 #define RIGHT_SEGMENT 2
@@ -185,78 +188,90 @@ public:
 
 SubaruStripDimensions SUBARU_SEGMENT_CONFIG = SubaruStripDimensions();
 
+std::vector<int> ALL_SUBARU_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT, REAR_LEFT_SEGMENT, REAR_RIGHT_SEGMENT, FRONT_RIGHT_SEGMENT, FRONT_LEFT_SEGMENT, SCOOP_SEGMENT, GRILL_SEGMENT};
 
-std::vector<int> DEFAULT_INTERIOR_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT, REAR_LEFT_SEGMENT, REAR_RIGHT_SEGMENT, FRONT_RIGHT_SEGMENT, FRONT_LEFT_SEGMENT, SCOOP_SEGMENT, GRILL_SEGMENT};
-
-
-std::vector<int> DEFAULT_GROUND_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT };
+std::vector<int> SUBARU_GROUND_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT};
 
 /**
  * Segment Controller Class
  */
 class SegCon
 {
+private:
+    static SegCon *instance;
+
 public:
-    SegCon()
+    SubaruSegment rearSegment{REAR_SEGMENT};
+    SubaruSegment leftSegment{LEFT_SEGMENT};
+    SubaruSegment rightSegment{RIGHT_SEGMENT};
+    SubaruSegment frontSegment{FRONT_SEGMENT};
+    SubaruSegment rearLeftSegment{REAR_LEFT_SEGMENT};
+    SubaruSegment rearRightSegment{REAR_RIGHT_SEGMENT};
+    SubaruSegment frontRightSegment{FRONT_RIGHT_SEGMENT};
+    SubaruSegment frontLeftSegment{FRONT_LEFT_SEGMENT};
+    SubaruSegment scoopSegment{SCOOP_SEGMENT};
+    SubaruSegment grillSegment{GRILL_SEGMENT};
+    SubaruSegment unifiedSegment{UNIFIED_SEGMENT};
+    SubaruTelemetry *ST = SubaruTelemetry::getInstance();
+
+    SegCon() {}
+    void initialize()
     {
-        if (strip.getLength() >= 300)
+        if (strip._segments.size() > 8)
         {
             setupSegments();
         }
+        else
+        {
+            Serial.println("Strip does not have enough segments for Subaru, waiting ...");
+        }
     }
-    static Segment &rearSegment()
+    static SegCon *getInstance()
     {
-        return strip.getSegment(REAR_SEGMENT);
+        if (instance == nullptr)
+        {
+            instance = new SegCon();
+            instance->initialize();
+        }
+        return instance;
     }
-    static Segment &leftSegment()
+
+    SubaruSegment getSegment(uint8_t segmentId)
     {
-        return strip.getSegment(LEFT_SEGMENT);
+        switch (segmentId)
+        {
+        case REAR_SEGMENT:
+            return rearSegment;
+        case LEFT_SEGMENT:
+            return leftSegment;
+        case RIGHT_SEGMENT:
+            return rightSegment;
+        case FRONT_SEGMENT:
+            return frontSegment;
+        case REAR_LEFT_SEGMENT:
+            return rearLeftSegment;
+        case REAR_RIGHT_SEGMENT:
+            return rearRightSegment;
+        case FRONT_RIGHT_SEGMENT:
+            return frontRightSegment;
+        case FRONT_LEFT_SEGMENT:
+            return frontLeftSegment;
+        case SCOOP_SEGMENT:
+            return scoopSegment;
+        case GRILL_SEGMENT:
+            return grillSegment;
+        default:
+            return unifiedSegment;
+        }
     }
-    static Segment &rightSegment()
-    {
-        return strip.getSegment(RIGHT_SEGMENT);
-    }
-    static Segment &frontSegment()
-    {
-        return strip.getSegment(FRONT_SEGMENT);
-    }
-    static Segment &rearLeftSegment()
-    {
-        return strip.getSegment(REAR_LEFT_SEGMENT);
-    }
-    static Segment &rearRightSegment()
-    {
-        return strip.getSegment(REAR_RIGHT_SEGMENT);
-    }
-    static Segment &frontRightSegment()
-    {
-        return strip.getSegment(FRONT_RIGHT_SEGMENT);
-    }
-    static Segment &frontLeftSegment()
-    {
-        return strip.getSegment(FRONT_LEFT_SEGMENT);
-    }
-    static Segment &scoopSegment()
-    {
-        return strip.getSegment(SCOOP_SEGMENT);
-    }
-    static Segment &grillSegment()
-    {
-        return strip.getSegment(GRILL_SEGMENT);
-    }
-    static Segment &unifiedSegment()
-    {
-        return strip.getSegment(UNIFIED_SEGMENT);
-    }
-    static Segment &seg(uint8_t id)
-    {
-        return strip.getSegment(id);
-    }
+
     // Declare the struct for PreviousState
 
     void setupSegments()
     {
-        if(strip.isUpdating()){
+
+        if (strip.isUpdating())
+        {
             Serial.println("Strip is updating, waiting for strip to finish updating...");
             return;
         }
@@ -264,67 +279,81 @@ public:
         // Set segments for the right, front, left, rear, and unified segments
 
         Serial.println("Setting up rear segment [rearStart:" + String(SUBARU_SEGMENT_CONFIG.rearStart) + ", rearEnd:" + String(SUBARU_SEGMENT_CONFIG.rearEnd) + ", rearLenght:" + String(SUBARU_SEGMENT_CONFIG.rearLength) + "] ...");
-        strip.setSegment(REAR_SEGMENT, SUBARU_SEGMENT_CONFIG.rearStart, SUBARU_SEGMENT_CONFIG.rearEnd, 1, 0, 0);
+        rearSegment
+            .setRelay(ST->groundRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.rearStart, SUBARU_SEGMENT_CONFIG.rearEnd);
+
         Serial.println("Setting up left segment...");
-        strip.setSegment(LEFT_SEGMENT, SUBARU_SEGMENT_CONFIG.leftStart, SUBARU_SEGMENT_CONFIG.leftEnd, 1, 0, 0);
+        leftSegment
+            .setRelay(ST->groundRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.leftStart, SUBARU_SEGMENT_CONFIG.leftEnd);
+
         Serial.println("Setting up right segment [rightStart:" + String(SUBARU_SEGMENT_CONFIG.rightStart) + ", rightEnd:" + String(SUBARU_SEGMENT_CONFIG.rightEnd) + "] ...");
-        strip.setSegment(RIGHT_SEGMENT, SUBARU_SEGMENT_CONFIG.rightStart, SUBARU_SEGMENT_CONFIG.rightEnd, 1, 0, 0);
+        rightSegment
+            .setRelay(ST->groundRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.rightStart, SUBARU_SEGMENT_CONFIG.rightEnd);
+
         Serial.println("Setting up front segmen...");
-        strip.setSegment(FRONT_SEGMENT, SUBARU_SEGMENT_CONFIG.frontStart, SUBARU_SEGMENT_CONFIG.frontEnd, 1, 0, 0);
-
-
+        frontSegment
+            .setRelay(ST->groundRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.frontStart, SUBARU_SEGMENT_CONFIG.frontEnd);
 
         // Set segments for the newly added segments
         Serial.println("Setting up rear left segment...");
-        strip.setSegment(REAR_LEFT_SEGMENT, SUBARU_SEGMENT_CONFIG.rearLeftStart, SUBARU_SEGMENT_CONFIG.rearLeftEnd, 1, 0, 0);
-        Serial.println("Setting up rear right segment...");
-        strip.setSegment(REAR_RIGHT_SEGMENT, SUBARU_SEGMENT_CONFIG.rearRightStart, SUBARU_SEGMENT_CONFIG.rearRightEnd, 1, 0, 0);
-        Serial.println("Setting up front right segment...");
-        strip.setSegment(FRONT_LEFT_SEGMENT, SUBARU_SEGMENT_CONFIG.frontLeftStart, SUBARU_SEGMENT_CONFIG.frontLeftEnd, 1, 0, 0);
-        Serial.println("Setting up front left segment...");
-        strip.setSegment(FRONT_RIGHT_SEGMENT, SUBARU_SEGMENT_CONFIG.frontRightStart, SUBARU_SEGMENT_CONFIG.frontRightEnd, 1, 0, 0);
-        Serial.println("Setting up scoop segment...");
-        strip.setSegment(SCOOP_SEGMENT, SUBARU_SEGMENT_CONFIG.scoopStart, SUBARU_SEGMENT_CONFIG.scoopEnd, 1, 0, 0);
-        Serial.println("Setting up grill segment...");
-        strip.setSegment(GRILL_SEGMENT, SUBARU_SEGMENT_CONFIG.grilleStart, SUBARU_SEGMENT_CONFIG.grilleEnd, 1, 0, 0);
+        rearLeftSegment
+            .setRelay(ST->interiorRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.rearLeftStart, SUBARU_SEGMENT_CONFIG.rearLeftEnd);
 
+        Serial.println("Setting up rear right segment...");
+        rearRightSegment
+            .setRelay(ST->interiorRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.rearRightStart, SUBARU_SEGMENT_CONFIG.rearRightEnd);
+
+        Serial.println("Setting up front right segment...");
+        frontRightSegment
+            .setRelay(ST->interiorRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.frontRightStart, SUBARU_SEGMENT_CONFIG.frontRightEnd);
+
+        Serial.println("Setting up front left segment...");
+        frontLeftSegment
+            .setRelay(ST->interiorRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.frontLeftStart, SUBARU_SEGMENT_CONFIG.frontLeftEnd);
+
+        Serial.println("Setting up scoop segment...");
+        scoopSegment
+            .setRelay(ST->engineRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.scoopStart, SUBARU_SEGMENT_CONFIG.scoopEnd);
+
+        Serial.println("Setting up grill segment...");
+        grillSegment
+            .setRelay(ST->engineRelay)
+            .setBounds(SUBARU_SEGMENT_CONFIG.grilleStart, SUBARU_SEGMENT_CONFIG.grilleEnd);
 
         Serial.println("Setting up unified segment...");
-        strip.setSegment(UNIFIED_SEGMENT, SUBARU_SEGMENT_CONFIG.unifiedStart, SUBARU_SEGMENT_CONFIG.unifiedEnd, 1, 0, 0);
+        unifiedSegment.setBounds(SUBARU_SEGMENT_CONFIG.unifiedStart, SUBARU_SEGMENT_CONFIG.unifiedEnd);
         // Initial state settings for each segment can be set here
 
-        auto &front = frontSegment();
-        auto &rear = rearSegment();
-        auto &left = leftSegment();
-        auto &right = rightSegment();
-        auto &rearLeft = rearLeftSegment();
-        auto &rearRight = rearRightSegment();
-        auto &frontRight = frontRightSegment();
-        auto &frontLeft = frontLeftSegment();
-        auto &scoop = scoopSegment();
-        auto &grill = grillSegment();
-
         // Example setting options for segments
-        right.setOption(SEG_OPTION_ON, false);
-        right.setOption(SEG_OPTION_SELECTED, true);
-        left.setOption(SEG_OPTION_ON, false);
-        left.setOption(SEG_OPTION_SELECTED, true);
-        rear.setOption(SEG_OPTION_ON, false);
-        rear.setOption(SEG_OPTION_SELECTED, true);
-        front.setOption(SEG_OPTION_ON, false);
-        front.setOption(SEG_OPTION_SELECTED, true);
-        rearLeft.setOption(SEG_OPTION_ON, false);
-        rearLeft.setOption(SEG_OPTION_SELECTED, true);
-        rearRight.setOption(SEG_OPTION_ON, false);
-        rearRight.setOption(SEG_OPTION_SELECTED, true);
-        frontRight.setOption(SEG_OPTION_ON, false);
-        frontRight.setOption(SEG_OPTION_SELECTED, true);
-        frontLeft.setOption(SEG_OPTION_ON, false);
-        frontLeft.setOption(SEG_OPTION_SELECTED, true);
-        scoop.setOption(SEG_OPTION_ON, false);
-        scoop.setOption(SEG_OPTION_SELECTED, true);
-        grill.setOption(SEG_OPTION_ON, false);
-        grill.setOption(SEG_OPTION_SELECTED, true);
+        rightSegment.setOption(SEG_OPTION_ON, false);
+        rightSegment.setOption(SEG_OPTION_SELECTED, true);
+        leftSegment.setOption(SEG_OPTION_ON, false);
+        leftSegment.setOption(SEG_OPTION_SELECTED, true);
+        rearSegment.setOption(SEG_OPTION_ON, false);
+        rearSegment.setOption(SEG_OPTION_SELECTED, true);
+        frontSegment.setOption(SEG_OPTION_ON, false);
+        frontSegment.setOption(SEG_OPTION_SELECTED, true);
+        rearLeftSegment.setOption(SEG_OPTION_ON, false);
+        rearLeftSegment.setOption(SEG_OPTION_SELECTED, true);
+        rearRightSegment.setOption(SEG_OPTION_ON, false);
+        rearRightSegment.setOption(SEG_OPTION_SELECTED, true);
+        frontRightSegment.setOption(SEG_OPTION_ON, false);
+        frontRightSegment.setOption(SEG_OPTION_SELECTED, true);
+        frontLeftSegment.setOption(SEG_OPTION_ON, false);
+        frontLeftSegment.setOption(SEG_OPTION_SELECTED, true);
+        scoopSegment.setOption(SEG_OPTION_ON, false);
+        scoopSegment.setOption(SEG_OPTION_SELECTED, true);
+        grillSegment.setOption(SEG_OPTION_ON, false);
+        grillSegment.setOption(SEG_OPTION_SELECTED, true);
     }
 
     bool checkSegmentIntegrity()
@@ -340,43 +369,44 @@ public:
 
         // Check if each segment is assigned to the correct LED start and end
 
-        integrityCheckResult &= seg(REAR_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rearStart;
-        integrityCheckResult &= seg(REAR_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rearEnd;
-        integrityCheckResult &= seg(LEFT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.leftStart;
-        integrityCheckResult &= seg(LEFT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.leftEnd;
-        integrityCheckResult &= seg(FRONT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.frontStart;
-        integrityCheckResult &= seg(FRONT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.frontEnd;
-        integrityCheckResult &= seg(RIGHT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rightStart;
-        integrityCheckResult &= seg(RIGHT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rightEnd;
-        integrityCheckResult &= seg(REAR_LEFT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rearLeftStart;
-        integrityCheckResult &= seg(REAR_LEFT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rearLeftEnd;
-        integrityCheckResult &= seg(REAR_RIGHT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.rearRightStart;
-        integrityCheckResult &= seg(REAR_RIGHT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.rearRightEnd;
-        integrityCheckResult &= seg(FRONT_RIGHT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.frontRightStart;
-        integrityCheckResult &= seg(FRONT_RIGHT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.frontRightEnd;
-        integrityCheckResult &= seg(FRONT_LEFT_SEGMENT).start == SUBARU_SEGMENT_CONFIG.frontLeftStart;
-        integrityCheckResult &= seg(FRONT_LEFT_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.frontLeftEnd;
-        integrityCheckResult &= seg(SCOOP_SEGMENT).start == SUBARU_SEGMENT_CONFIG.scoopStart;
-        integrityCheckResult &= seg(SCOOP_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.scoopEnd;
-        integrityCheckResult &= seg(GRILL_SEGMENT).start == SUBARU_SEGMENT_CONFIG.grilleStart;
-        integrityCheckResult &= seg(GRILL_SEGMENT).stop == SUBARU_SEGMENT_CONFIG.grilleEnd;
+        integrityCheckResult &= rearSegment.start == SUBARU_SEGMENT_CONFIG.rearStart;
+        integrityCheckResult &= rearSegment.stop == SUBARU_SEGMENT_CONFIG.rearEnd;
+        integrityCheckResult &= leftSegment.start == SUBARU_SEGMENT_CONFIG.leftStart;
+        integrityCheckResult &= leftSegment.stop == SUBARU_SEGMENT_CONFIG.leftEnd;
+        integrityCheckResult &= rightSegment.start == SUBARU_SEGMENT_CONFIG.rightStart;
+        integrityCheckResult &= rightSegment.stop == SUBARU_SEGMENT_CONFIG.rightEnd;
+        integrityCheckResult &= frontSegment.start == SUBARU_SEGMENT_CONFIG.frontStart;
+        integrityCheckResult &= frontSegment.stop == SUBARU_SEGMENT_CONFIG.frontEnd;
+        integrityCheckResult &= rearLeftSegment.start == SUBARU_SEGMENT_CONFIG.rearLeftStart;
+        integrityCheckResult &= rearLeftSegment.stop == SUBARU_SEGMENT_CONFIG.rearLeftEnd;
+        integrityCheckResult &= rearRightSegment.start == SUBARU_SEGMENT_CONFIG.rearRightStart;
+        integrityCheckResult &= rearRightSegment.stop == SUBARU_SEGMENT_CONFIG.rearRightEnd;
+        integrityCheckResult &= frontRightSegment.start == SUBARU_SEGMENT_CONFIG.frontRightStart;
+        integrityCheckResult &= frontRightSegment.stop == SUBARU_SEGMENT_CONFIG.frontRightEnd;
+        integrityCheckResult &= frontLeftSegment.start == SUBARU_SEGMENT_CONFIG.frontLeftStart;
+        integrityCheckResult &= frontLeftSegment.stop == SUBARU_SEGMENT_CONFIG.frontLeftEnd;
+        integrityCheckResult &= scoopSegment.start == SUBARU_SEGMENT_CONFIG.scoopStart;
+        integrityCheckResult &= scoopSegment.stop == SUBARU_SEGMENT_CONFIG.scoopEnd;
+        integrityCheckResult &= grillSegment.start == SUBARU_SEGMENT_CONFIG.grilleStart;
+        integrityCheckResult &= grillSegment.stop == SUBARU_SEGMENT_CONFIG.grilleEnd;
 
         // Print all start and stop values to console.
 
         if (!integrityCheckResult && !previousIntegrityCheckResult)
         {
             Serial.println("Segment integrity check result: " + String(integrityCheckResult));
-            Serial.println("REAR_SEGMENT_START: " + String(strip.getSegment(REAR_SEGMENT).start) + " REAR_SEGMENT_END: " + String(strip.getSegment(REAR_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearEnd));
-            Serial.println("LEFT_SEGMENT_START: " + String(strip.getSegment(LEFT_SEGMENT).start) + " LEFT_SEGMENT_END: " + String(strip.getSegment(LEFT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.leftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.leftEnd));
-            Serial.println("FRONT_SEGMENT_START: " + String(strip.getSegment(FRONT_SEGMENT).start) + " FRONT_SEGMENT_END: " + String(strip.getSegment(FRONT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontEnd));
-            Serial.println("RIGHT_SEGMENT_START: " + String(strip.getSegment(RIGHT_SEGMENT).start) + " RIGHT_SEGMENT_END: " + String(strip.getSegment(RIGHT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rightEnd));
-            Serial.println("REAR_LEFT_SEGMENT_START: " + String(strip.getSegment(REAR_LEFT_SEGMENT).start) + " REAR_LEFT_SEGMENT_END: " + String(strip.getSegment(REAR_LEFT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearLeftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearLeftEnd));
-            Serial.println("REAR_RIGHT_SEGMENT_START: " + String(strip.getSegment(REAR_RIGHT_SEGMENT).start) + " REAR_RIGHT_SEGMENT_END: " + String(strip.getSegment(REAR_RIGHT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearRightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearRightEnd));
-            Serial.println("FRONT_RIGHT_SEGMENT_START: " + String(strip.getSegment(FRONT_RIGHT_SEGMENT).start) + " FRONT_RIGHT_SEGMENT_END: " + String(strip.getSegment(FRONT_RIGHT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontRightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontRightEnd));
-            Serial.println("FRONT_LEFT_SEGMENT_START: " + String(strip.getSegment(FRONT_LEFT_SEGMENT).start) + " FRONT_LEFT_SEGMENT_END: " + String(strip.getSegment(FRONT_LEFT_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontLeftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontLeftEnd));
-            Serial.println("SCOOP_SEGMENT_START: " + String(strip.getSegment(SCOOP_SEGMENT).start) + " SCOOP_SEGMENT_END: " + String(strip.getSegment(SCOOP_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.scoopStart) + ":" + String(SUBARU_SEGMENT_CONFIG.scoopEnd));
-            Serial.println("GRILL_SEGMENT_START: " + String(strip.getSegment(GRILL_SEGMENT).start) + " GRILL_SEGMENT_END: " + String(strip.getSegment(GRILL_SEGMENT).stop) + "|" + String(SUBARU_SEGMENT_CONFIG.grilleStart) + ":" + String(SUBARU_SEGMENT_CONFIG.grilleEnd));
+            Serial.println("REAR_SEGMENT_START: " + String(rearSegment.start) + " REAR_SEGMENT_END: " + String(rearSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearEnd));
+            Serial.println("LEFT_SEGMENT_START: " + String(leftSegment.start) + " LEFT_SEGMENT_END: " + String(leftSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.leftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.leftEnd));
+            Serial.println("FRONT_SEGMENT_START: " + String(frontSegment.start) + " FRONT_SEGMENT_END: " + String(frontSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontEnd));
+            Serial.println("RIGHT_SEGMENT_START: " + String(rightSegment.start) + " RIGHT_SEGMENT_END: " + String(rightSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rightEnd));
+            Serial.println("REAR_LEFT_SEGMENT_START: " + String(rearLeftSegment.start) + " REAR_LEFT_SEGMENT_END: " + String(rearLeftSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearLeftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearLeftEnd));
+            Serial.println("REAR_RIGHT_SEGMENT_START: " + String(rearRightSegment.start) + " REAR_RIGHT_SEGMENT_END: " + String(rearRightSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearRightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearRightEnd));
+            Serial.println("FRONT_RIGHT_SEGMENT_START: " + String(frontRightSegment.start) + " FRONT_RIGHT_SEGMENT_END: " + String(frontRightSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontRightStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontRightEnd));
+            Serial.println("FRONT_LEFT_SEGMENT_START: " + String(frontLeftSegment.start) + " FRONT_LEFT_SEGMENT_END: " + String(frontLeftSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.frontLeftStart) + ":" + String(SUBARU_SEGMENT_CONFIG.frontLeftEnd));
+            Serial.println("SCOOP_SEGMENT_START: " + String(scoopSegment.start) + " SCOOP_SEGMENT_END: " + String(scoopSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.scoopStart) + ":" + String(SUBARU_SEGMENT_CONFIG.scoopEnd));
+            Serial.println("GRILL_SEGMENT_START: " + String(grillSegment.start) + " GRILL_SEGMENT_END: " + String(grillSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.grilleStart) + ":" + String(SUBARU_SEGMENT_CONFIG.grilleEnd));
             Serial.println("Configuration incorrect, resetting segments...");
+            delay(5000);
             setupSegments();
             return false;
         }
@@ -384,6 +414,6 @@ public:
         return true;
     }
 };
-SegCon SC;
+SegCon *SegCon::instance = nullptr; // Initialize the static instance variable
 
 #endif
