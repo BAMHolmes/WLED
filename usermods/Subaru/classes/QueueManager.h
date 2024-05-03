@@ -19,6 +19,7 @@ class QueueManager
 {
 
 public:
+
     QueueManager()
     {
         //Iterate through all segment ids and initialize generic effects in the shadow.
@@ -36,6 +37,9 @@ public:
     }
 
 private:
+    SubaruTelemetry *ST = SubaruTelemetry::getInstance();
+    ColorPrint *p = ColorPrint::getInstance();
+
     enum Action
     {
         Starting,
@@ -67,16 +71,16 @@ public:
     {
         EffectsQueue *segmentQueue = getOrCreateQueue(segmentID);
         if (!segmentQueue) {
-            //p.println("\tprintQueue Error. No segmentQueue defined", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+            p->println("\tprintQueue Error. No segmentQueue defined", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
             return; // Check for null paointer
         }
 
-        //p.print("\tprintQueue(" + String(segmentID) + "): Effects in queue: ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->print("\tprintQueue(" + String(segmentID) + "): Effects in queue: ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
         for (Effect *effect : *segmentQueue)
         {
-            //p.print(effect->name + ", ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+            p->print(effect->name + ", ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
         }
-        //p.println("", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->println("", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
     }
     void addEffectToQueue(int segmentID, Effect *effectToAdd)
     {
@@ -95,7 +99,7 @@ public:
             if (queuedEffect->sameAs(effectToAdd))
             {
                 // Serial.println("addEffectToQueue(): Effect [" + String(effect.name) + "] already exists in the queue, appending run time...");
-                //p.println("addEffectToQueue(" + String(segmentID) + "): Effect [" + String(effectToAdd->name) + "] already exists in the queue as (" + String(queuedEffect->name) + "), appending run time...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+                p->println("addEffectToQueue(" + String(segmentID) + "): Effect [" + String(effectToAdd->name) + "] already exists in the queue as (" + String(queuedEffect->name) + "), appending run time...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
                 queuedEffect->start(segmentID);
                 return;
             }
@@ -114,15 +118,15 @@ public:
         //Check if the back of the segmentQueue has an effect
 
         // Print current state of affairs
-        //p.println("addEffectToQueue(" + String(segmentID) + "): Current effect on segment " + String(segmentID) + ": " + String(effectOnSegment->name), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
-        //p.print("\tEffect to add: ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
-        //p.println(effectToAdd->name, ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
-        //p.println("\tEffect on segment is preset: " + String(effectOnSegmentIsPreset), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
-        //p.println("\tEffect on segment is same as effect to add: " + String(effectOnSegmentSameAsEffectToAdd), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->println("addEffectToQueue(" + String(segmentID) + "): Current effect on segment " + String(segmentID) + ": " + String(effectOnSegment->name), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->print("\tEffect to add: ", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->println(effectToAdd->name, ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        p->println("\tEffect on segment is preset: " + String(effectOnSegmentIsPreset), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->println("\tEffect on segment is same as effect to add: " + String(effectOnSegmentSameAsEffectToAdd), ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
         if (effectAlreadyQueued)
         {
             // Serial.println("addEffectToQueue(): Effect [" + String(effect.name) + "] is already active on the segment, skipping...");
-            //p.println("\tEffect [" + String(effectToAdd->name) + "] is already active on the segment, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+            p->println("\tEffect [" + String(effectToAdd->name) + "] is already active on the segment, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
             return;
         }
         bool segmentQueueHasEffectOnSegment = !segmentQueueIsEmpty && segmentQueue->back()->sameAs(effectOnSegment);
@@ -130,17 +134,17 @@ public:
         {
             bool shouldReplaceBack = !segmentQueueIsEmpty && !segmentQueue->back()->isPreset();
             if(shouldReplaceBack){
-                //p.println("\tRunning checksum [ " + segmentQueue->front()->weakChecksum + " ]", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+                p->println("\tRunning checksum [ " + segmentQueue->front()->weakChecksum + " ]", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
 
-                ////p.println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, replacing it with [" + String(effectToAdd->name) + "]...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+                p->println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, replacing it with [" + String(effectToAdd->name) + "]...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
                 segmentQueue->pop_back();
             }
             effectOnSegment->isPreset(true);
-            //p.println("\tEffect [" + String(effectOnSegment->name) + "] is DEFINITELY not a preset ( " + String(effectOnSegment->weakChecksum) + " ), pushing it to the back...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+            p->println("\tEffect [" + String(effectOnSegment->name) + "] is DEFINITELY not a preset ( " + String(effectOnSegment->weakChecksum) + " ), pushing it to the back...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
             segmentQueue->push_back(new Effect(*effectOnSegment));
         }
 
-        //p.println("\tAdding effect [" + String(effectToAdd->name) + "] to the queue...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+        p->println("\tAdding effect [" + String(effectToAdd->name) + "] to the queue...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
         segmentQueue->push_front(effectToAdd);
         
     }
@@ -163,7 +167,7 @@ public:
     void processQueue(int segmentID)
     {
 
-        ////p.println("processQueue(" + String(segmentID) + "): Processing queue for segment " + String(segmentID), ColorPrint::FG_BLACK, ColorPrint::BG_GRAY);
+        p->println("processQueue(" + String(segmentID) + "): Processing queue for segment " + String(segmentID), ColorPrint::FG_BLACK, ColorPrint::BG_GRAY);
         printQueue(segmentID);
         // Check if the queue is empty
         EffectsQueue *segmentQueue = getOrCreateQueue(segmentID);
@@ -173,7 +177,7 @@ public:
         bool segmentQueueIsEmpty = segmentQueue->empty();
         if (segmentQueueIsEmpty)
         {
-            //p.println("\tQueue on segment " + String(segmentID) + " is empty, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_GRAY);
+            p->println("\tQueue on segment " + String(segmentID) + " is empty, skipping...", ColorPrint::FG_BLACK, ColorPrint::BG_GRAY);
             return;
         }
         // Hold a reference to the current effect
@@ -187,7 +191,7 @@ public:
         bool effectMismatch = !effectToRun->sameAs(effectOnSegment);
         bool useSegmentEffect = !effectToRun->isPreset() && effectMismatch;
         if(useSegmentEffect){
-            //p.println("\tEffect at front [" + String(effectToRun->name) + "] is not a preset, using segment effect [" + String(effectOnSegment->name) + "]...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            p->println("\tEffect at front [" + String(effectToRun->name) + "] is not a preset, using segment effect [" + String(effectOnSegment->name) + "]...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             effectToRun = effectOnSegment;
         }
 
@@ -196,17 +200,17 @@ public:
         bool expired = effectToRun->isExpired(segmentID);
         if (expired)
         {
-            //p.println("\tEffect [" + String(effectToRun->name) + "] expired. Stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            p->println("\tEffect [" + String(effectToRun->name) + "] expired. Stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             segmentQueue->pop_front();
 
             if(segmentQueue->empty()){
-               //p.println("\t" + String(effectToRun->name) + " expired and the queue is empty. Stopping and starting " + String(effects.off.name) + ".", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+               p->println("\t" + String(effectToRun->name) + " expired and the queue is empty. Stopping and starting " + String(effects.off.name) + ".", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                 delay(5000);
 
                effectToRun->stop(segmentID, &effects.off);
             }else{
                 auto *newFrontEffect = segmentQueue->front();
-                //p.println("\t" + String(effectToRun->name) + " expired. Stopping and starting: " + String(newFrontEffect->name), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+                p->println("\t" + String(effectToRun->name) + " expired. Stopping and starting: " + String(newFrontEffect->name), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
                 effectToRun->stop(segmentID, newFrontEffect);
             }
             return;
@@ -215,18 +219,18 @@ public:
         {
             bool shouldReplaceBack = !segmentQueue->back()->isPreset();
             if(shouldReplaceBack){
-                ////p.println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, replacing it with [" + String(effectToAdd->name) + "]...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
+                p->println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, replacing it with [" + String(effectToRun->name) + "]...", ColorPrint::FG_BLACK, ColorPrint::BG_WHITE);
                 segmentQueue->pop_back();
             }
-            //p.println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, pushing it to the back...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            p->println("\tEffect [" + String(effectOnSegment->name) + "] is not a preset, pushing it to the back...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             segmentQueue->push_back(new Effect(*effectOnSegment));
         }        
         if (effectMismatch)
         {
-            //p.println("\tEffect [" + String(effectToRun->name) + "] isn't on the segment (segment has [" + String(effectOnSegment->name) + "]). Triggering...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            p->println("\tEffect [" + String(effectToRun->name) + "] isn't on the segment (segment has [" + String(effectOnSegment->name) + "]). Triggering...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             effectToRun->triggerEffect(segmentID);
         }
-        //p.println("\tContinuing effect [" + String(effectToRun->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+        p->println("\tContinuing effect [" + String(effectToRun->name) + "] on segment " + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
       
     }
 };
@@ -234,7 +238,7 @@ public:
 QueueManager queueManager;
 void SegCon::resetAnyEffects()
 {
-    //p.println("resetAnyEffects(): Clearing effectsPerSegment...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+    p->println("resetAnyEffects(): Clearing effectsPerSegment...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
     queueManager.clearEffectsPerSegment();
 }
 // emplace_back <- crazy method.

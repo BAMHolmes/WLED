@@ -389,7 +389,7 @@ public:
         //     if (!relayOn)
         //     {
         //         seg.activateRelay();
-        //         //p.print(String(name) + " relay was off. Turning on the relay for segment-" + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        //         //p->print(String(name) + " relay was off. Turning on the relay for segment-" + String(segmentID), ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
         //     }
         // }
     }
@@ -417,7 +417,7 @@ public:
             segmentStatusMap[segmentID].startTime = 0;
             segmentStatusMap[segmentID].expired = false;
         }
-        ////p.print("Stopping [" + name + "] on segment " + segmentID + ". Up next: " + nextEffect->name, ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
+        ////p->print("Stopping [" + name + "] on segment " + segmentID + ". Up next: " + nextEffect->name, ColorPrint::FG_WHITE, ColorPrint::BG_GRAY);
 
         nextEffect->triggerEffect(segmentID);
         // SubaruSegment seg = SegCon::getInstance()->getSegment(segmentID);
@@ -435,7 +435,7 @@ public:
         {
             start(segmentID);
         }
-        //p.println("Triggering [" + name + "]  on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        //p->println("Triggering [" + name + "]  on segments: ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
         // If segmentID is -1, trigger the effect on all segments
         // Else trigger the effect on only the specified segment
         std::vector<int> allSegments = segmentIDs;
@@ -445,7 +445,7 @@ public:
         }
         for (const auto &segmentID : allSegments)
         {
-            ////p.print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+            ////p->print(String(segmentID) + " ", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
             uint32_t color1 = colors[0];
             uint32_t color2 = colors[1];
             uint32_t color3 = colors[2];
@@ -455,7 +455,7 @@ public:
                 //Attempt to print a backtrace at this point
 
                 
-                //p.println("Turning off segment " + String(segmentID) + "...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+                //p->println("Turning off segment " + String(segmentID) + "...", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
                 
                 //delay(10000);
 
@@ -487,7 +487,7 @@ public:
             }
             strip.trigger();
         }
-        //p.println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+        //p->println("for " + String(runTime) + " seconds...", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
     }
     bool isExpired(int segmentID = -1)
     {
@@ -796,17 +796,17 @@ public:
 
     void printAllChecksums() const
     {
-        //p.println("*****Checksums for all effects:******");
-        //p.println("doorOpen: " + String(doorOpen.checksum));
-        //p.println("leftTurn: " + String(leftTurn.checksum));
-        //p.println("rightTurn: " + String(rightTurn.checksum));
-        //p.println("brake: " + String(brake.checksum));
-        //p.println("reverse: " + String(reverse.checksum));
-        //p.println("ignition: " + String(ignition.checksum));
-        //p.println("unlock: " + String(unlock.checksum));
-        //p.println("lock: " + String(lock.checksum));
-        //p.println("off: " + String(off.checksum));
-        //p.println("*************************************");
+        //p->println("*****Checksums for all effects:******");
+        //p->println("doorOpen: " + String(doorOpen.checksum));
+        //p->println("leftTurn: " + String(leftTurn.checksum));
+        //p->println("rightTurn: " + String(rightTurn.checksum));
+        //p->println("brake: " + String(brake.checksum));
+        //p->println("reverse: " + String(reverse.checksum));
+        //p->println("ignition: " + String(ignition.checksum));
+        //p->println("unlock: " + String(unlock.checksum));
+        //p->println("lock: " + String(lock.checksum));
+        //p->println("off: " + String(off.checksum));
+        //p->println("*************************************");
     }
     bool isPreset(const Effect *effect, bool debug = false) const
     {
@@ -814,21 +814,21 @@ public:
         //Check weakChecksumMap for match by explicitly looping through the map and comparing the checksum
         for(auto pair : weakEffectMap){
             if(debug){
-            //p.print("Comparing [" + pair.first + "] to [" + theWeakChecksum + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+            //p->print("Comparing [" + pair.first + "] to [" + theWeakChecksum + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
 
             }
             if(pair.first == theWeakChecksum){
                 if(debug){
-                //p.println(" TRUE ", ColorPrint::FG_BLACK, ColorPrint::BG_GREEN);
+                //p->println(" TRUE ", ColorPrint::FG_BLACK, ColorPrint::BG_GREEN);
                 }
                 return true;
             }
             if(debug){
-            //p.println(" FALSE ", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+            //p->println(" FALSE ", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
             }
         }
         if(debug){
-        //p.println("No match found for [" + theWeakChecksum + "]", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+        //p->println("No match found for [" + theWeakChecksum + "]", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
         }
         return false;
     }
@@ -872,10 +872,10 @@ void Effect::morph()
     Segment* segment = &strip.getSegment(boundSegmentID);
     bool isUpdating = strip.isUpdating();
     if(isUpdating){
-        //p.println("Segment is updating. Skipping morph...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+        //p->println("Segment is updating. Skipping morph...", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
         return;
     }
-    ////p.println("\t\tMorphing effect for segment " + String(boundSegmentID) + " using effect [" + name + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+    ////p->println("\t\tMorphing effect for segment " + String(boundSegmentID) + " using effect [" + name + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
     setMode(segment->mode);
     setReverse(segment->reverse);
     setColor(segment->colors[0], segment->colors[1], segment->colors[2]);
@@ -884,10 +884,10 @@ void Effect::morph()
     setPalette(segment->palette);
     setIntensity(segment->intensity);
     setRunTime(0); // Default to continuous run unless specified
-    ////p.println("\t\tSegment mode is " + String(segment->mode) + " (" + String(strip.getModeData(segment->mode)) + ")", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+    ////p->println("\t\tSegment mode is " + String(segment->mode) + " (" + String(strip.getModeData(segment->mode)) + ")", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
     std::string mode_data = strip.getModeData(segment->mode);
     String _name = std::string(mode_data).substr(0, mode_data.find('@')).c_str();
-    ////p.println("\t\tSetting name to [" + _name + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+    ////p->println("\t\tSetting name to [" + _name + "]", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
 
     setName(_name);
     setChecksum(); // Recalculate checksum based on the current state
@@ -896,7 +896,7 @@ void Effect::morph()
     // Effect *preset = effects.getEffectByChecksum(checksum);
     // if (preset != nullptr)
     // {
-    //     //p.println("!!!!!!!!!!!Effect [" + name + "] is a preset effect: " + preset->name, ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+    //     //p->println("!!!!!!!!!!!Effect [" + name + "] is a preset effect: " + preset->name, ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
     //     return *preset;
     // }
 }

@@ -6,7 +6,6 @@
 #include <Wire.h>
 #include "PinState.h"
 #include "ColorPrint.h"
-#include "Ticker.h"
 // #include <BLEDevice.h>
 // #include <BLEUtils.h>
 // #include <BLEScan.h>
@@ -77,10 +76,10 @@ private:
     // P02 <- Left Signal <- RJ45 2
     // P01 <- Right Signal <- RJ45 1
     // P0 <- Park Signal <- RJ45 0
-    Ticker relayOffTicker;  // Ticker object to manage timing
-    bool relayShutdownInProgress = true;
-
+    String output = "";
+    String previousOutput = "";
     static SubaruTelemetry *instance;
+    ColorPrint *p = ColorPrint::getInstance();
 
 public:
     uint32_t pinState = 0xFFFF0FFF; // Track the state of all 32 pins (input and output)
@@ -111,6 +110,10 @@ public:
     SubaruTelemetry()
     {
         groundRelay.addDependency(&buttonA);
+        groundRelay.setName("Ground Relay");
+        engineRelay.setName("Engine Relay");
+        interiorRelay.setName("Interior Relay");
+        projectionRelay.setName("Projection Relay");
         // readTelemetry();
         // pinMode(12, OUTPUT);
         // pinMode(14, OUTPUT);
@@ -142,7 +145,13 @@ public:
         // //Serial.println("Wrote to PCF8575: " + String(dataFirst) + " " + String(dataSecond));
         SubaruTelemetry::getInstance()->printState("Wrote to PCF8575");
     }
-
+    void printOutput(){
+        Serial.write(27);       // ESC command
+        Serial.print("[2J");    // clear screen command
+        Serial.write(27);
+        Serial.print("[H");   
+        Serial.println("Time: " + String(millis()));
+    }
     void refreshInputPins()
     {
         // Output mask should only include the output pins P12 to P15 on the first PCF8575
@@ -246,7 +255,7 @@ public:
     // timer.every(1000, refreshInputPins); // Using a hypothetical timer library to call every 1000 ms
     void turnOnRelay(int segmentID);
     void turnOffRelay(int segmentID);
-    void turnOffRelay(PinState &pinState, int delay);
+    void turnOnRelay(PinState *pintState);
     static void relayOffCallback(PinState *relay);  // Static callback method
 
     void turnOffAllRelays()
@@ -400,12 +409,14 @@ public:
         driverRockerLow.update(pinState & (1 << ROCKER_DRIVER_LOW_PIN));
 
         // Print the current state of all relays every 1000 milliseconds
-        auto currentTime = millis();
-        if (currentTime - lastTime > period)
-        {
-            printAllRelays();
-            lastTime = currentTime;
-        }
+        printAllRelays();
+
+        // auto currentTime = millis();
+        // if (currentTime - lastTime > period)
+        // {
+        //     printAllRelays();
+        //     lastTime = currentTime;
+        // }
     }
     // Print the state of all pins. Takes "state" as an optional parameter
     void printState(String postfix = "Verified State")
@@ -426,11 +437,11 @@ public:
     }
     void printAllRelays()
     {
-        //Serial.println("projectionRelay: " + String(projectionRelay.current));
-        //Serial.println("engineRelay: " + String(engineRelay.current));
-        //Serial.println("interiorRelay: " + String(interiorRelay.current));
-        //Serial.println("groundRelay: " + String(groundRelay.current));
-        //Serial.println();
+        Serial.println("projectionRelay: " + String(projectionRelay.current));
+        Serial.println("engineRelay: " + String(engineRelay.current));
+        Serial.println("interiorRelay: " + String(interiorRelay.current));
+        Serial.println("groundRelay: " + String(groundRelay.current));
+        Serial.println();
     }
 };
 
@@ -438,24 +449,37 @@ public:
 void PinState::write(bool state)
 {
     //String dependencyDefined = dependency ? " dependency is defined. :) " : " dependency is NOT defined!!!";
-    //p.println("Pin " + String(pinIndex) + dependencyDefined, ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
     //Check if this PinState has a dependency, if it doesn check that the dependency is active.
-    if (dependency && !dependency->isInputActive())
+    if (state && dependency && !dependency->isInputActive())
     {
-        //p.println("Dependency not active, cannot writing to pin " + String(pinIndex) + " with state " + String(state), ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+        p->println("Dependency not active, cannot writing to pin " + String(pinIndex) + " with state " + String(state), ColorPrint::FG_WHITE, ColorPrint::BG_RED);
         return;
+    }else if (dependency && dependency->isInputActive())
+    {
+        p->println("Dependency active, writing to pin " + String(pinIndex) + " with state " + String(state), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+    }else if (!dependency)
+    {
+        p->println("No restrictions, writing to pin " + String(pinIndex) + " with state " + String(state), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
     }
     //Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    if(state && delayedDeactivationInProgress){
+        p->println("Detaching timer for relay " + String(name), ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
+        timer.detach();
+        delayedDeactivationInProgress = false;
+    }
     if (state && !current)
     {
         current = true;
         SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
+        p->println("Writing ON to pin " + String(pinIndex) + " via PinState::write, State: " + String(current), ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
         //Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
     }
     else if (!state && current)
     {
         current = false;
+        delayedDeactivationInProgress = false;
         SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
+        p->println("Writing OFF to pin " + String(pinIndex) + " via PinState::write, State: " + String(current), ColorPrint::FG_WHITE, ColorPrint::BG_RED);
         //Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
     }
     //Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");

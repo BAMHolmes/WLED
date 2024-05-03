@@ -3,9 +3,13 @@
 
 #include "wled.h"
 #include "PinState.h"
+#include "ColorPrint.h"
 
 class SubaruSegment : public Segment
 {
+private:
+  ColorPrint *p = ColorPrint::getInstance();
+
 public:
     uint8_t id; // Identifier for convenience
     PinState *relay; // Pointer to PinState for controlling a relay

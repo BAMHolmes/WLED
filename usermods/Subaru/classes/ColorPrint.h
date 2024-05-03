@@ -1,17 +1,19 @@
-
 #ifndef COLOR_PRINT_H
 #define COLOR_PRINT_H
 
+#include <Arduino.h>
+#include <vector>
+
 /**
  * A Class with methods for printing colored text to Serial monitor.
- * It accepts a String and a color code for the foreground and background color of the text .
- * The color codes should be enums like FG_RED, BG_GREEN for forground red and background green respectfully
+ * It accepts a String and a color code for the foreground and background color of the text.
+ * The color codes are defined in the Color enum.
+ * The print and println methods buffer the output until commit is called to send it to the Serial.
  */
 
 class ColorPrint
 {
 public:
-    static bool enabled;
     enum Color
     {
         FG_BLACK = 30,
@@ -31,23 +33,52 @@ public:
         BG_CYAN = 46,
         BG_WHITE = 47,
         BG_GRAY = 100
-
     };
 
-    static void print(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
-    {
-        if(!enabled) return;
+private:
+    static ColorPrint* instance;
+    std::vector<String> buffer;
+    bool enabled = true;
+
+    ColorPrint() {}  // Private constructor for singleton
+
+public:
+    // Get the singleton instance of ColorPrint
+    void disable(){
+        enabled = false;
+    }
+    void enable(){
+        enabled = true;
+    }
+    static ColorPrint* getInstance() {
+        if (instance == nullptr) {
+            instance = new ColorPrint();
+        }
+        return instance;
+    }
+
+    // Disable or enable color print messages
+    void setEnabled(bool enable) {
+        enabled = enable;
+    }
+
+    void print(const String& text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK) {
+        if (!enabled) return;
         Serial.print("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
+        //buffer.push_back("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
+
     }
-    static void println(String text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK)
-    {
-        if(!enabled) return;
+
+    void println(const String& text, Color fgColor = FG_WHITE, Color bgColor = BG_BLACK) {
+        if (!enabled) return;
         Serial.println("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m");
+        //buffer.push_back("\033[" + String(fgColor) + ";" + String(bgColor) + "m" + text + "\033[0m\n");
     }
+
+
 };
-// Disable or enable color print messages
-bool ColorPrint::enabled = true;
 
+// Initialize the static instance pointer
+ColorPrint* ColorPrint::instance = nullptr;
 
-const ColorPrint p;
 #endif // COLOR_PRINT_H

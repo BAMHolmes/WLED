@@ -21,6 +21,8 @@ class Subaru : public Usermod
 
 {
 private:
+  SubaruTelemetry *ST = SubaruTelemetry::getInstance();
+  ColorPrint *p = ColorPrint::getInstance();
   QueueManager queueManager;
   std::map<PinState*, bool> pendingRelayState;
   // Usermod variable declarations for storing segment indices
@@ -131,7 +133,7 @@ private:
 public:
   void setup()
   {
-    // effects.off.run();
+    p->enable();
     ST->initializePins();
     //Serial.println("All outputs written to PCF8575");
   }
@@ -184,6 +186,8 @@ public:
 
       return;
     }
+    delay(3000);
+
     ST->readTelemetry();
 
     /**
@@ -195,7 +199,6 @@ public:
      */
     printDetailsPeriodically();
 
-    //delay(3000);
 
   if(ST->driverRockerHigh.isInputActive() || ST->doorOpen.isInputActive()){
     ST->turnOnProjectionRelay();
@@ -210,11 +213,11 @@ public:
       SubaruSegment seg = SegCon::seg(segmentID);
       pendingRelayState[seg.relay] = pendingRelayState[seg.relay] || false;
       
-      //p.println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
-      //p.print("Iterating on segment ", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
-      //p.println(" " + String(segmentID) + " ", ColorPrint::BG_WHITE, ColorPrint::BG_GREEN);
+      p->println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+      p->print("Iterating on segment ", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+      p->println(" " + String(segmentID) + " ", ColorPrint::BG_WHITE, ColorPrint::BG_GREEN);
       if(seg.on){
-        //p.println("Turning on relay for segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+        p->println("Turning on relay for segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
         pendingRelayState[seg.relay] = true;
       }
       // Iterate through effects.allEffects and check to see if this effect should be triggered on this segmentID
@@ -227,54 +230,28 @@ public:
           continue;
         }
         String _modeForSegment = strip.getModeData(seg.mode);
-        // //p.println("\tMode for segment " + String(segmentID) + " is " + _modeForSegment, ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+        // p->println("\tMode for segment " + String(segmentID) + " is " + _modeForSegment, ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
         bool triggering = effect->triggering();
  
         if (triggering)
         {
-          //p.println("\tQueueing " + effect->name + " on segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+          p->println("\tQueueing " + effect->name + " on segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
           // If the segmentID exists in the list of effect->segmentIDs, add the effect to the queue
           queueManager.addEffectToQueue(segmentID, effect);
         }
-      
       }
       queueManager.processQueue(segmentID);
-      
     }
     
     //Loop through all pendingRelayStates and update the relay accordingly
-    for(auto &relayState : pendingRelayState){
-      if(relayState.second && !relayState.first->isOutputActive()){
-        relayState.first->write(true);
-      }else if(!relayState.second && relayState.first->isOutputActive()){
-        relayState.first->write(false);
-      }
-      relayState.second = false;
-    }
-  
-    //p.println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+    SegCon::getInstance()->checkRelaySegments();
+    //printState() every 500ms
 
-    //p.println("");
-    //p.println("");
-    if (ST->ignition.deactivated() && !timerStarted)
-    {
-      // Start the timer once when the ignition is deactivated
-      powerOffTimer = std::chrono::steady_clock::now();
-      timerStarted = true;
-    }
+    p->println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
 
-    if (timerStarted)
-    {
-      auto currentTime = std::chrono::steady_clock::now();
-      if (std::chrono::duration_cast<std::chrono::seconds>(currentTime - powerOffTimer).count() >= powerOffDelay)
-      {
-        // Turn off all relays here
-        ST->turnOffAllEffectRelays(); // Assuming this is the method to turn off the relays
+    p->println("");
+    p->println("");
 
-        // Reset the timer flag
-        timerStarted = false;
-      }
-    }
   }
 };
 const char Subaru::_name[] = "Subaru";

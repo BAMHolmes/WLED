@@ -200,6 +200,7 @@ class SegCon
 {
 private:
     static SegCon *instance;
+    ColorPrint *p = ColorPrint::getInstance();
 
 public:
     SubaruSegment rearSegment{REAR_SEGMENT};
@@ -214,10 +215,10 @@ public:
     SubaruSegment grillSegment{GRILL_SEGMENT};
     SubaruSegment unifiedSegment{UNIFIED_SEGMENT};
     //Create a map of relays to segments
-    std::map<PinState, std::vector<SubaruSegment>> relaySegmentMap = {
-        {ST->groundRelay, {rearSegment, leftSegment, rightSegment, frontSegment}},
-        {ST->interiorRelay, {rearLeftSegment, rearRightSegment, frontRightSegment, frontLeftSegment}},
-        {ST->engineRelay, {scoopSegment, grillSegment}}};
+    std::map<PinState*, std::vector<SubaruSegment>> relaySegmentMap = {
+        {&SubaruTelemetry::getInstance()->groundRelay, {rearSegment, leftSegment, rightSegment, frontSegment}},
+        {&SubaruTelemetry::getInstance()->interiorRelay, {rearLeftSegment, rearRightSegment, frontRightSegment, frontLeftSegment}},
+        {&SubaruTelemetry::getInstance()->engineRelay, {scoopSegment, grillSegment}}};
     SubaruTelemetry *ST = SubaruTelemetry::getInstance();
     void resetAnyEffects();
     SegCon() {}
@@ -234,21 +235,30 @@ public:
         }
     }
     void checkRelaySegments(){
+        SubaruTelemetry *ST = SubaruTelemetry::getInstance();
+        //p->println("RELAY STATUS", ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
+
         for (auto const &relaySegmentPair : relaySegmentMap)
         {
-            PinState relay = relaySegmentPair.first;
+            PinState *relay = relaySegmentPair.first;
+            
             std::vector<SubaruSegment> segments = relaySegmentPair.second;
             bool relayShouldBeOff = true;
             for (SubaruSegment segment : segments)
             {
+                segment.updateFromStrip();
                 if(segment.on){
                     relayShouldBeOff = false;
                     break;
                 }
             }
-            if(relayShouldBeOff){
+            if(relayShouldBeOff && relay->isOutputActive()){
                //Turn off the relay after 30 seconds...
-               ST->turnOffRelay(relay, 30000);
+                //p->println("\t[" + relay->name + "] should be OFF", ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+               relay->delayOff(30);
+            }else if(!relayShouldBeOff){
+                //p->println("\t[" + relay->name + "] should be ON", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
+                relay->write(true);
             }
         }
     }
@@ -460,14 +470,12 @@ void SubaruTelemetry::turnOffRelay(int segmentID){
     SegCon::seg(segmentID).deactivateRelay();
 }
 void SubaruTelemetry::relayOffCallback(PinState *relay) {
+    //p->println("THE CALLBACK IS FIRING!!!!!", ColorPrint::FG_BLACK, ColorPrint::BG_YELLOW);
     relay->write(false);
 }
-void SubaruTelemetry::turnOffRelay(PinState &relay, int duration = 30){
-    if(relayShutdownInProgress){
-        return;
-    }
-    relayShutdownInProgress = true;
-    relayOffTicker.once(duration * 100, relayOffCallback, &relay);
+
+void SubaruTelemetry::turnOnRelay(PinState *relay){
+    relay->write(true);
     //relay.write(false);
 }
 #endif
