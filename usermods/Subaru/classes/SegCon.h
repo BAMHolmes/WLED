@@ -188,7 +188,7 @@ public:
 
 SubaruStripDimensions SUBARU_SEGMENT_CONFIG = SubaruStripDimensions();
 
-std::vector<int> ALL_SUBARU_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT, REAR_LEFT_SEGMENT, REAR_RIGHT_SEGMENT, FRONT_RIGHT_SEGMENT, FRONT_LEFT_SEGMENT, SCOOP_SEGMENT, GRILL_SEGMENT};
+std::vector<int> ALL_SUBARU_SEGMENT_IDS = {REAR_SEGMENT, LEFT_SEGMENT, RIGHT_SEGMENT, FRONT_SEGMENT, REAR_LEFT_SEGMENT, REAR_RIGHT_SEGMENT, FRONT_RIGHT_SEGMENT, FRONT_LEFT_SEGMENT, SCOOP_SEGMENT, GRILL_SEGMENT};
 
 std::vector<int> SUBARU_GROUND_SEGMENT_IDS = {REAR_SEGMENT, RIGHT_SEGMENT, LEFT_SEGMENT, FRONT_SEGMENT};
 
@@ -213,7 +213,7 @@ public:
     SubaruSegment grillSegment{GRILL_SEGMENT};
     SubaruSegment unifiedSegment{UNIFIED_SEGMENT};
     SubaruTelemetry *ST = SubaruTelemetry::getInstance();
-
+    void resetAnyEffects();
     SegCon() {}
     void initialize()
     {
@@ -236,31 +236,45 @@ public:
         return instance;
     }
 
+    static SubaruSegment seg(uint8_t segmentId){
+        return instance->getSegment(segmentId);
+    }
     SubaruSegment getSegment(uint8_t segmentId)
     {
         switch (segmentId)
         {
         case REAR_SEGMENT:
+            rearSegment.updateFromStrip();
             return rearSegment;
         case LEFT_SEGMENT:
+            leftSegment.updateFromStrip();
             return leftSegment;
         case RIGHT_SEGMENT:
+            rightSegment.updateFromStrip();
             return rightSegment;
         case FRONT_SEGMENT:
+            frontSegment.updateFromStrip();
             return frontSegment;
         case REAR_LEFT_SEGMENT:
+            rearLeftSegment.updateFromStrip();
             return rearLeftSegment;
         case REAR_RIGHT_SEGMENT:
+            rearRightSegment.updateFromStrip();
             return rearRightSegment;
         case FRONT_RIGHT_SEGMENT:
+            frontRightSegment.updateFromStrip();
             return frontRightSegment;
         case FRONT_LEFT_SEGMENT:
+            frontLeftSegment.updateFromStrip();
             return frontLeftSegment;
         case SCOOP_SEGMENT:
+            scoopSegment.updateFromStrip();
             return scoopSegment;
         case GRILL_SEGMENT:
+            grillSegment.updateFromStrip();
             return grillSegment;
         default:
+            unifiedSegment.updateFromStrip();
             return unifiedSegment;
         }
     }
@@ -354,16 +368,13 @@ public:
         scoopSegment.setOption(SEG_OPTION_SELECTED, true);
         grillSegment.setOption(SEG_OPTION_ON, false);
         grillSegment.setOption(SEG_OPTION_SELECTED, true);
+        resetAnyEffects();
     }
 
     bool checkSegmentIntegrity()
     {
-        // if (strip._segments.size() < 4)
-        // {
-        //     Serial.println("Segment size: " + String(strip._segments.size()) + " is less than 4, resetting segments...");
-        //     return false;
-        // }
-        static bool previousIntegrityCheckResult = true;
+
+        //static bool previousIntegrityCheckResult = true;
 
         bool integrityCheckResult = true;
 
@@ -392,7 +403,7 @@ public:
 
         // Print all start and stop values to console.
 
-        if (!integrityCheckResult && !previousIntegrityCheckResult)
+        if (!integrityCheckResult)
         {
             Serial.println("Segment integrity check result: " + String(integrityCheckResult));
             Serial.println("REAR_SEGMENT_START: " + String(rearSegment.start) + " REAR_SEGMENT_END: " + String(rearSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.rearStart) + ":" + String(SUBARU_SEGMENT_CONFIG.rearEnd));
@@ -406,14 +417,20 @@ public:
             Serial.println("SCOOP_SEGMENT_START: " + String(scoopSegment.start) + " SCOOP_SEGMENT_END: " + String(scoopSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.scoopStart) + ":" + String(SUBARU_SEGMENT_CONFIG.scoopEnd));
             Serial.println("GRILL_SEGMENT_START: " + String(grillSegment.start) + " GRILL_SEGMENT_END: " + String(grillSegment.stop) + "|" + String(SUBARU_SEGMENT_CONFIG.grilleStart) + ":" + String(SUBARU_SEGMENT_CONFIG.grilleEnd));
             Serial.println("Configuration incorrect, resetting segments...");
-            delay(5000);
             setupSegments();
             return false;
         }
-        previousIntegrityCheckResult = integrityCheckResult;
+        //previousIntegrityCheckResult = integrityCheckResult;
         return true;
     }
 };
 SegCon *SegCon::instance = nullptr; // Initialize the static instance variable
 
+void SubaruTelemetry::turnOnRelay(int segmentID){
+    SegCon::seg(segmentID).activateRelay();
+}
+
+void SubaruTelemetry::turnOffRelay(int segmentID){
+    SegCon::seg(segmentID).deactivateRelay();
+}
 #endif

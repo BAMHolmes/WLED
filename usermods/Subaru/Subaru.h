@@ -3,6 +3,7 @@
 #include <const.h>
 #include <Wire.h>
 #include "classes/QueueManager.h"
+#include <chrono>
 
 const char UM_REAR_SEGMENT_LENGTH[] PROGMEM = "rearSegmentLength";
 const char UM_RIGHT_SEGMENT_LENGTH[] PROGMEM = "rightSegmentLength";
@@ -14,14 +15,18 @@ const char UM_FRONT_RIGHT_SEGMENT_LENGTH[] PROGMEM = "frontRightSegmentLength";
 const char UM_FRONT_LEFT_SEGMENT_LENGTH[] PROGMEM = "frontLeftSegmentLength";
 const char UM_SCOOP_SEGMENT_LENGTH[] PROGMEM = "scoopSegmentLength";
 const char UM_GRILLE_SEGMENT_LENGTH[] PROGMEM = "grilleSegmentLength";
+
+typedef std::pair<bool, PinState*> RelayState;
 class Subaru : public Usermod
 
 {
 private:
   QueueManager queueManager;
-
+  std::map<PinState*, bool> pendingRelayState;
   // Usermod variable declarations for storing segment indices
-
+  std::chrono::steady_clock::time_point powerOffTimer;
+  bool timerStarted;
+  int powerOffDelay = 30;
   static const char _name[];
   static const char _enabled[];
   bool enabled = false;
@@ -41,14 +46,13 @@ private:
     top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.frontLeftLength;
     top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.scoopLength;
     top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)] = SUBARU_SEGMENT_CONFIG.grilleLength;
-
   }
 
   bool readFromConfig(JsonObject &root) override
   {
     JsonObject top = root[FPSTR(_name)];
     bool configComplete = !top.isNull();
-    Serial.println("Before config read: rearLength="+String(SUBARU_SEGMENT_CONFIG.rearLength));
+    //Serial.println("Before config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
     configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled);
     configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearLength);
     configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.leftLength);
@@ -60,8 +64,7 @@ private:
     configComplete &= getJsonValue(top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontLeftLength);
     configComplete &= getJsonValue(top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.scoopLength);
     configComplete &= getJsonValue(top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.grilleLength);
-    Serial.println("After config read: rearLength="+String(SUBARU_SEGMENT_CONFIG.rearLength));
-
+    //Serial.println("After config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
 
     if (configComplete)
     {
@@ -125,15 +128,13 @@ private:
     // Repeat for LEFT, RIGHT, and REAR segments...
   }
 
-
 public:
   void setup()
   {
-    effects.off.start();
+    // effects.off.run();
     ST->initializePins();
-    Serial.println("All outputs written to PCF8575");
+    //Serial.println("All outputs written to PCF8575");
   }
-
 
   /**
    * A method that checks if each segment is assigned to the correct LED start and end. If a change/discrepancy is detected, run setup()
@@ -142,13 +143,15 @@ public:
 
   /**
    * A method that prints the state of pins 0 - 38 on the ESP32 board
-  */
-  void printInputPins(){
-    for(int i = 0; i < 39; i++){
-      Serial.print("Pin ");
-      Serial.print(i);
-      Serial.print(" is ");
-      Serial.println(digitalRead(i));
+   */
+  void printInputPins()
+  {
+    for (int i = 0; i < 39; i++)
+    {
+      //Serial.print("Pin ");
+      //Serial.print(i);
+      //Serial.print(" is ");
+      //Serial.println(digitalRead(i));
     }
   }
   void printDetailsPeriodically()
@@ -158,104 +161,122 @@ public:
     if (millis() - lastPrintTime >= printInterval)
     {
       printSegmentDetails();
-      //printInputPins();
+      // printInputPins();
       lastPrintTime = millis();
     }
   }
 
-
-
-
   void loop()
   {
-    //delay(1000);
-    
-    if (!bri || !enabled || !effects.checkSegmentIntegrity() || strip.isUpdating()){
-      //Print the string "Not running" along with all the values of "bri" and "enabled"
-      // Serial.print("Not running. bri:");
-      // Serial.print(bri);
-      // Serial.print(", enabled:");
-      // Serial.print(enabled);
-      // Serial.print(", checkSegmentIntegrity:");
-      // Serial.print(effects.checkSegmentIntegrity());
-      // Serial.print(", updating:");
-      // Serial.println(strip.isUpdating());
+    // delay(1000);
+
+    if (!bri || !enabled || !effects.checkSegmentIntegrity() || strip.isUpdating())
+    {
+      // Print the string "Not running" along with all the values of "bri" and "enabled"
+      //  //Serial.print("Not running. bri:");
+      //  //Serial.print(bri);
+      //  //Serial.print(", enabled:");
+      //  //Serial.print(enabled);
+      //  //Serial.print(", checkSegmentIntegrity:");
+      //  //Serial.print(effects.checkSegmentIntegrity());
+      //  //Serial.print(", updating:");
+      //  //Serial.println(strip.isUpdating());
 
       return;
     }
+    ST->readTelemetry();
 
     /**
      * Update the state of all things Subaru
      */
-
-
 
     /**
      * Print current state of segment
      */
     printDetailsPeriodically();
 
+    //delay(3000);
 
-    /**
-     * BRAKE EFFECT SEQUENCE
-     **********************/
-    if(ST->brake.activated()){
-        queueManager.addEffectToQueue(effects.brake); // 10 seconds run time, 0.5 seconds transition
+  if(ST->driverRockerHigh.isInputActive() || ST->doorOpen.isInputActive()){
+    ST->turnOnProjectionRelay();
+  }else{
+    ST->turnOffProjectionRelay();
+  }
+    for (int segmentID : ALL_SUBARU_SEGMENT_IDS)
+    {
+
+
+      //Set a RelayState for this segment. Default "false"
+      SubaruSegment seg = SegCon::seg(segmentID);
+      pendingRelayState[seg.relay] = pendingRelayState[seg.relay] || false;
+      
+      //p.println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+      //p.print("Iterating on segment ", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+      //p.println(" " + String(segmentID) + " ", ColorPrint::BG_WHITE, ColorPrint::BG_GREEN);
+      if(seg.on){
+        //p.println("Turning on relay for segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+        pendingRelayState[seg.relay] = true;
+      }
+      // Iterate through effects.allEffects and check to see if this effect should be triggered on this segmentID
+      for (auto &effect : effects.allEffects)
+      {
+        // Check if segmentID exists in the list of effect->segmentIDs
+        bool relevantSegment = effect->mySegment(segmentID);
+        if (!relevantSegment)
+        {
+          continue;
+        }
+        String _modeForSegment = strip.getModeData(seg.mode);
+        // //p.println("\tMode for segment " + String(segmentID) + " is " + _modeForSegment, ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+        bool triggering = effect->triggering();
+ 
+        if (triggering)
+        {
+          //p.println("\tQueueing " + effect->name + " on segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+          // If the segmentID exists in the list of effect->segmentIDs, add the effect to the queue
+          queueManager.addEffectToQueue(segmentID, effect);
+        }
+      
+      }
+      queueManager.processQueue(segmentID);
+
     }
-
-    /**
-     * REVERSE EFFECT SEQUENCE
-     * **********************/
-    if(ST->reverse.activated()){
-      queueManager.addEffectToQueue(effects.reverse); // 10 seconds run time, 0.5 seconds transition
-    }
-
-    /**
-     * LEFT EFFECT SEQUENCE
-     **********************/
-    if(ST->left.activated()){
-      queueManager.addEffectToQueue(effects.leftTurn); // 10 seconds run time, 0.5 seconds transition
-    }
-
-    /**
-     * RIGHT EFFECT SEQUENCE
-     **********************/
-    if(ST->right.activated()){
-      queueManager.addEffectToQueue(effects.rightTurn); // 10 seconds run time, 0.5 seconds transition 
-    }
-
-    /**
-     * DOOR EFFECT SEQUENCE
-     **********************/
-    if(ST->doorOpen.activated()){
-      queueManager.addEffectToQueue(effects.doorOpen);
-    }
-
-    /**
-     * UNLOCK EFFECT SEQUENCE
-     ************************/
-    if(ST->doorUnlock.activated()){
-      queueManager.addEffectToQueue(effects.unlock); // 10 seconds run time, 0.5 seconds transition
-    }
-
-    /**
-     * LOCK EFFECT SEQUENCE
-     **********************/
-    if(ST->doorLock.activated()){
-      queueManager.addEffectToQueue(effects.lock); // 10 seconds run time, 0.5 seconds transition
-    } 
-
-    /**
-     * IGNITION EFFECT SEQUENCE
-     **************************/
-    if(ST->ignition.activated()){
-      queueManager.addEffectToQueue(effects.ignition); // 10 seconds run time, 0.5 seconds transition
-    }
-
-    queueManager.processQueue();
     
-    ST->readTelemetry();
+    //Loop through all pendingRelayStates and update the relay accordingly
+    for(auto &relayState : pendingRelayState){
+      if(relayState.second && !relayState.first->isOutputActive()){
+        relayState.first->write(true);
+      }else if(!relayState.second && relayState.first->isOutputActive()){
+        relayState.first->write(false);
+      }
+      relayState.second = false;
+    }
+  
+    //p.println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
+
+    //p.println("");
+    //p.println("");
+    if (ST->ignition.deactivated() && !timerStarted)
+    {
+      // Start the timer once when the ignition is deactivated
+      powerOffTimer = std::chrono::steady_clock::now();
+      timerStarted = true;
+    }
+
+    if (timerStarted)
+    {
+      auto currentTime = std::chrono::steady_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(currentTime - powerOffTimer).count() >= powerOffDelay)
+      {
+        // Turn off all relays here
+        ST->turnOffAllEffectRelays(); // Assuming this is the method to turn off the relays
+
+        // Reset the timer flag
+        timerStarted = false;
+      }
+    }
   }
 };
 const char Subaru::_name[] = "Subaru";
 const char Subaru::_enabled[] = "enabled";
+

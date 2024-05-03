@@ -30,18 +30,23 @@ public:
     // Additional methods to augment the segment's functionality can be added here
     void activateRelay()
     {
-        if (relay)
+        if (relay && !relay->isOutputActive())
         {
-            Serial.println("Firing relay for segment " + String(id) + "!"); 
             relay->write(true);
+        }else if(relay->isOutputActive()){
+
         }
     }
 
     void deactivateRelay()
     {
-        if (relay)
+        if (relay && relay->isOutputActive())
         {
             relay->write(false);
+        }else if(!relay->isOutputActive()){
+            Serial.println("======================================");
+            Serial.println("Relay already off for segment " + String(id) + "!"); 
+            Serial.println("======================================");
         }
     }
     void updateFromStrip() {
@@ -52,6 +57,7 @@ public:
         this->start = current.start;
         this->stop = current.stop;
         this->options = current.options;
+        this->on = current.on;
         // Add more fields as required
     }
     // Example setter for the relay

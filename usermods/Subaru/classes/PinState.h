@@ -5,8 +5,10 @@ class PinState
 {
 public:
     bool current = false;
+    String name = "Unnamed Pin";
+    PinState* dependency = nullptr;
     unsigned int pinIndex; // Index of the pin in the expander
-    unsigned int activationCount;
+    unsigned int activationCount = 0;
     // Constructor to set pin index during initialization
     PinState(unsigned int index) : pinIndex(index) {}
 
@@ -18,6 +20,10 @@ public:
     bool isOutputActive() const { return current; }
     bool isOutputInactive() const { return !current; }
 
+    void addDependency(PinState* dep)
+    {
+        dependency = dep;
+    }
     void update(bool newState)
     {
         previous = current;

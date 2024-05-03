@@ -5,6 +5,8 @@
 #include <const.h>
 #include <Wire.h>
 #include "PinState.h"
+#include "ColorPrint.h"
+
 // #include <BLEDevice.h>
 // #include <BLEUtils.h>
 // #include <BLEScan.h>
@@ -24,14 +26,14 @@
 #define ENGINE_RELAY_PIN 13
 #define INTERIOR_RELAY_PIN 14
 #define UNDERCARRIAGE_RELAY_PIN 15
-#define IGNITION_PIN 16
-#define DOOR_PIN 17
-#define LOCK_PIN 18
-#define UNLOCK_PIN 19
-#define PUSH_BUTTON_1_PIN 20
-#define PUSH_BUTTON_2_PIN 21
-#define ROCKER_DRIVER_HIGH_PIN 22
-#define ROCKER_DRIVER_LOW_PIN 23
+#define IGNITION_PIN 24
+#define DOOR_PIN 25
+#define LOCK_PIN 26
+#define UNLOCK_PIN 27
+#define PUSH_BUTTON_1_PIN 28
+#define PUSH_BUTTON_2_PIN 29
+#define ROCKER_DRIVER_HIGH_PIN 30
+#define ROCKER_DRIVER_LOW_PIN 31
 
 class SubaruTelemetry; // Forward declaration of SubaruTelemetry
 
@@ -107,6 +109,7 @@ public:
 
     SubaruTelemetry()
     {
+        groundRelay.addDependency(&buttonA);
         // readTelemetry();
         // pinMode(12, OUTPUT);
         // pinMode(14, OUTPUT);
@@ -135,7 +138,7 @@ public:
         Wire.write(dataSecond >> 8);
         Wire.endTransmission();
 
-        // Serial.println("Wrote to PCF8575: " + String(dataFirst) + " " + String(dataSecond));
+        // //Serial.println("Wrote to PCF8575: " + String(dataFirst) + " " + String(dataSecond));
         SubaruTelemetry::getInstance()->printState("Wrote to PCF8575");
     }
 
@@ -208,11 +211,11 @@ public:
         // Log the full pin state before masking
         // for (int i = 31; i >= 0; i--)
         // {
-        //     Serial.print((pinState >> i) & 1);
+        //     //Serial.print((pinState >> i) & 1);
         // }
-        // Serial.print(" <- Full pinState before mask");
+        // //Serial.print(" <- Full pinState before mask");
 
-        // Serial.println();
+        // //Serial.println();
 
         // Apply the correct mask
         uint16_t dataFirst = pinState & 0xFFFF;          // Assuming the first expander is connected to all lower 16 bits
@@ -221,25 +224,28 @@ public:
         // Log what will be written to each PCF8575
         // for (int i = 15; i >= 0; i--)
         // {
-        //     Serial.print((dataFirst >> i) & 1);
+        //     //Serial.print((dataFirst >> i) & 1);
         // }
-        // Serial.print(" <- Data to first PCF8575");
+        // //Serial.print(" <- Data to first PCF8575");
 
-        // Serial.println();
+        // //Serial.println();
 
         // for (int i = 15; i >= 0; i--)
         // {
-        //     Serial.print((dataSecond >> i) & 1);
+        //     //Serial.print((dataSecond >> i) & 1);
         // }
-        // Serial.print(" <- Data to second PCF8575");
+        // //Serial.print(" <- Data to second PCF8575");
 
-        // Serial.println();
+        // //Serial.println();
 
         // Write to PCF8575
         SubaruTelemetry::writePCF8575(dataFirst, dataSecond);
     }
     // You would call refreshInputPins() periodically or after an event like this:
     // timer.every(1000, refreshInputPins); // Using a hypothetical timer library to call every 1000 ms
+    void turnOnRelay(int segmentID);
+    void turnOffRelay(int segmentID);
+
     void turnOffAllRelays()
     {
         turnOffGroundLEDRelay();
@@ -247,51 +253,56 @@ public:
         turnOffProjectionRelay();
         turnOffEngineRelay();
     }
+    void turnOffAllEffectRelays(){
+        turnOffGroundLEDRelay();
+        turnOffInteriorLEDRelay();
+        turnOffEngineRelay();
+    }
     void turnOffGroundLEDRelay()
     {
-        Serial.println("Turning off Ground Relay");
+        //Serial.println("Turning off Ground Relay");
         groundRelay.write(false);
     }
 
     void turnOnGroundLEDRelay()
     {
-        Serial.println("Turning on Ground Relay");
+        //Serial.println("Turning on Ground Relay");
         groundRelay.write(true);
     }
 
     void turnOffInteriorLEDRelay()
     {
-        Serial.println("Turning off Interior Relay");
+        //Serial.println("Turning off Interior Relay");
         interiorRelay.write(false);
     }
 
     void turnOnInteriorLEDRelay()
     {
-        Serial.println("Turning on Interior Relay");
+        //Serial.println("Turning on Interior Relay");
         interiorRelay.write(true);
     }
 
     void turnOffProjectionRelay()
     {
-        Serial.println("Turning off Projection Relay");
+        //Serial.println("Turning off Projection Relay");
         projectionRelay.write(false);
     }
 
     void turnOnProjectionRelay()
     {
-        Serial.println("Turning on Projection Relay");
+        //Serial.println("Turning on Projection Relay");
         projectionRelay.write(true);
     }
 
     void turnOffEngineRelay()
     {
-        Serial.println("Turning off Engine Relay");
+        //Serial.println("Turning off Engine Relay");
         engineRelay.write(false);
     }
 
     void turnOnEngineRelay()
     {
-        Serial.println("Turning on Engine Relay");
+        //Serial.println("Turning on Engine Relay");
         engineRelay.write(true);
     }
     bool alwaysTrue()
@@ -303,7 +314,7 @@ public:
      */
     void turnOnLEDRelay()
     {
-        // Serial.println("Turning on LED Relay on P15");
+        // //Serial.println("Turning on LED Relay on P15");
         // uint32_t currentState = readPCF8575();
         // currentState |= (1 << 15); // Set PIN 15 high
         // writePCF8575(currentState & 0xFFFF, currentState >> 16);
@@ -323,15 +334,15 @@ public:
      */
     void ensureRelayOn()
     {
-        Serial.println("Ensuring LED Relay is on");
+        //Serial.println("Ensuring LED Relay is on");
         if (!LEDRelayOn())
         {
-            Serial.println("LED Relay is off, turning on...");
+            //Serial.println("LED Relay is off, turning on...");
             turnOnGroundLEDRelay();
         }
         else
         {
-            Serial.println("LED Relay is on");
+            //Serial.println("LED Relay is on");
         }
     }
     static const int SDA_PIN = 21; // Make these constants static
@@ -358,12 +369,12 @@ public:
         for (int i = 0; i < 32; i++)
         {
             const String stateString = pinState & (1 << i) ? "HIGH" : "LOW";
-            Serial.print("P" + String(i) + ":" + stateString);
+            //Serial.print("P" + String(i) + ":" + stateString);
         }
-        Serial.println();
+        //Serial.println();
         */
         // Update each pin state based on the corresponding bit in the pinState variable
-        // Serial.println("Reading telemetry and updating PinState objects...");
+        // //Serial.println("Reading telemetry and updating PinState objects...");
         parked.update(pinState & (1 << PARK_PIN));
         right.update(pinState & (1 << RIGHT_SIGNAL_PIN));
         left.update(pinState & (1 << LEFT_SIGNAL_PIN));
@@ -375,6 +386,7 @@ public:
         // engineRelay.update(pinState & (1 << ENGINE_RELAY_PIN));
         // interiorRelay.update(pinState & (1 << INTERIOR_RELAY_PIN));
         // groundRelay.update(pinState & (1 << UNDERCARRIAGE_RELAY_PIN));
+
         ignition.update(pinState & (1 << IGNITION_PIN));
         doorOpen.update(pinState & (1 << DOOR_PIN));
         doorLock.update(pinState & (1 << LOCK_PIN));
@@ -402,41 +414,49 @@ public:
         {
             for (int i = 31; i >= 0; i--)
             {
-                Serial.print((pinState >> i) & 1);
+                //Serial.print((pinState >> i) & 1);
             }
-            Serial.print(" <- " + postfix);
-            Serial.println(); // Print newline after the binary data
+            //Serial.print(" <- " + postfix);
+            //Serial.println(); // Print newline after the binary data
             lastTime = currentTime;
         }
     }
     void printAllRelays()
     {
-        Serial.println("projectionRelay: " + String(projectionRelay.current));
-        Serial.println("engineRelay: " + String(engineRelay.current));
-        Serial.println("interiorRelay: " + String(interiorRelay.current));
-        Serial.println("groundRelay: " + String(groundRelay.current));
-        Serial.println();
+        //Serial.println("projectionRelay: " + String(projectionRelay.current));
+        //Serial.println("engineRelay: " + String(engineRelay.current));
+        //Serial.println("interiorRelay: " + String(interiorRelay.current));
+        //Serial.println("groundRelay: " + String(groundRelay.current));
+        //Serial.println();
     }
 };
 
 // Now define methods that depend on the complete definition of SubaruTelemetry
 void PinState::write(bool state)
 {
-    if (state)
+    //String dependencyDefined = dependency ? " dependency is defined. :) " : " dependency is NOT defined!!!";
+    //p.println("Pin " + String(pinIndex) + dependencyDefined, ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
+    //Check if this PinState has a dependency, if it doesn check that the dependency is active.
+    if (dependency && !dependency->isInputActive())
     {
-        if (!activationCount++)
-        {
-            current = true;
-            SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
-            Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
-        }
+        //p.println("Dependency not active, cannot writing to pin " + String(pinIndex) + " with state " + String(state), ColorPrint::FG_WHITE, ColorPrint::BG_RED);
+        return;
     }
-    else if (activationCount && !--activationCount)
+    //Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    if (state && !current)
+    {
+        current = true;
+        SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
+        //Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
+    }
+    else if (!state && current)
     {
         current = false;
         SubaruTelemetry::writePin(pinIndex, current); // Pass the correct pin index and state
-        Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
+        //Serial.println("Writing to pin _" + String(pinIndex) + "_ via PinState::write, State: " + String(current));
     }
+    //Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+
 }
 
 void SubaruTelemetry::writePin(unsigned int pin, bool state)
@@ -444,16 +464,16 @@ void SubaruTelemetry::writePin(unsigned int pin, bool state)
     SubaruTelemetry *instance = SubaruTelemetry::getInstance(); // Get the instance
     uint32_t *pinStatePtr = &(instance->pinState);              // Get pointer to pinState
 
-    Serial.print("Attempting to ");
-    Serial.print(state ? "set" : "clear");
-    Serial.print(" pin ");
-    Serial.print(pin);
-    Serial.print(", pinState before: ");
+    //Serial.print("Attempting to ");
+    //Serial.print(state ? "set" : "clear");
+    //Serial.print(" pin ");
+    //Serial.print(pin);
+    //Serial.print(", pinState before: ");
     for (int i = 31; i >= 0; i--)
     {
-        Serial.print((*pinStatePtr >> i) & 1); // Dereference pointer for reading
+        //Serial.print((*pinStatePtr >> i) & 1); // Dereference pointer for reading
     }
-    Serial.println();
+    //Serial.println();
 
     uint32_t mask = 1UL << pin;
     if (state)
@@ -465,12 +485,12 @@ void SubaruTelemetry::writePin(unsigned int pin, bool state)
         *pinStatePtr &= ~mask; // Use dereferenced pointer to clear the pin bit
     }
 
-    Serial.print("pinState after: ");
+    //Serial.print("pinState after: ");
     for (int i = 31; i >= 0; i--)
     {
-        Serial.print((*pinStatePtr >> i) & 1); // Dereference pointer for reading
+        //Serial.print((*pinStatePtr >> i) & 1); // Dereference pointer for reading
     }
-    Serial.println();
+    //Serial.println();
     SubaruTelemetry::getInstance()->updateHardware();
 }
 
