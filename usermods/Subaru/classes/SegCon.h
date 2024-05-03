@@ -4,6 +4,7 @@
 #include "wled.h"
 #include "SubaruSegment.h"
 #include "SubaruTelemetry.h"
+#include "Ticker.h"
 
 #define REAR_SEGMENT 0
 #define LEFT_SEGMENT 1
@@ -212,11 +213,17 @@ public:
     SubaruSegment scoopSegment{SCOOP_SEGMENT};
     SubaruSegment grillSegment{GRILL_SEGMENT};
     SubaruSegment unifiedSegment{UNIFIED_SEGMENT};
+    //Create a map of relays to segments
+    std::map<PinState, std::vector<SubaruSegment>> relaySegmentMap = {
+        {ST->groundRelay, {rearSegment, leftSegment, rightSegment, frontSegment}},
+        {ST->interiorRelay, {rearLeftSegment, rearRightSegment, frontRightSegment, frontLeftSegment}},
+        {ST->engineRelay, {scoopSegment, grillSegment}}};
     SubaruTelemetry *ST = SubaruTelemetry::getInstance();
     void resetAnyEffects();
     SegCon() {}
     void initialize()
     {
+        
         if (strip._segments.size() > 8)
         {
             setupSegments();
@@ -224,6 +231,25 @@ public:
         else
         {
             Serial.println("Strip does not have enough segments for Subaru, waiting ...");
+        }
+    }
+    void checkRelaySegments(){
+        for (auto const &relaySegmentPair : relaySegmentMap)
+        {
+            PinState relay = relaySegmentPair.first;
+            std::vector<SubaruSegment> segments = relaySegmentPair.second;
+            bool relayShouldBeOff = true;
+            for (SubaruSegment segment : segments)
+            {
+                if(segment.on){
+                    relayShouldBeOff = false;
+                    break;
+                }
+            }
+            if(relayShouldBeOff){
+               //Turn off the relay after 30 seconds...
+               ST->turnOffRelay(relay, 30000);
+            }
         }
     }
     static SegCon *getInstance()
@@ -432,5 +458,16 @@ void SubaruTelemetry::turnOnRelay(int segmentID){
 
 void SubaruTelemetry::turnOffRelay(int segmentID){
     SegCon::seg(segmentID).deactivateRelay();
+}
+void SubaruTelemetry::relayOffCallback(PinState *relay) {
+    relay->write(false);
+}
+void SubaruTelemetry::turnOffRelay(PinState &relay, int duration = 30){
+    if(relayShutdownInProgress){
+        return;
+    }
+    relayShutdownInProgress = true;
+    relayOffTicker.once(duration * 100, relayOffCallback, &relay);
+    //relay.write(false);
 }
 #endif

@@ -6,7 +6,7 @@
 #include <Wire.h>
 #include "PinState.h"
 #include "ColorPrint.h"
-
+#include "Ticker.h"
 // #include <BLEDevice.h>
 // #include <BLEUtils.h>
 // #include <BLEScan.h>
@@ -77,12 +77,13 @@ private:
     // P02 <- Left Signal <- RJ45 2
     // P01 <- Right Signal <- RJ45 1
     // P0 <- Park Signal <- RJ45 0
+    Ticker relayOffTicker;  // Ticker object to manage timing
+    bool relayShutdownInProgress = true;
 
     static SubaruTelemetry *instance;
 
 public:
     uint32_t pinState = 0xFFFF0FFF; // Track the state of all 32 pins (input and output)
-
     // Declare all the variables and members that need to be initialized
     PinState parked{PARK_PIN};
     PinState right{RIGHT_SIGNAL_PIN};
@@ -245,6 +246,8 @@ public:
     // timer.every(1000, refreshInputPins); // Using a hypothetical timer library to call every 1000 ms
     void turnOnRelay(int segmentID);
     void turnOffRelay(int segmentID);
+    void turnOffRelay(PinState &pinState, int delay);
+    static void relayOffCallback(PinState *relay);  // Static callback method
 
     void turnOffAllRelays()
     {

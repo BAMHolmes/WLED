@@ -239,7 +239,7 @@ public:
       
       }
       queueManager.processQueue(segmentID);
-
+      
     }
     
     //Loop through all pendingRelayStates and update the relay accordingly
