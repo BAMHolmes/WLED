@@ -16,7 +16,7 @@ const char UM_FRONT_LEFT_SEGMENT_LENGTH[] PROGMEM = "frontLeftSegmentLength";
 const char UM_SCOOP_SEGMENT_LENGTH[] PROGMEM = "scoopSegmentLength";
 const char UM_GRILLE_SEGMENT_LENGTH[] PROGMEM = "grilleSegmentLength";
 
-typedef std::pair<bool, PinState*> RelayState;
+typedef std::pair<bool, PinState *> RelayState;
 class Subaru : public Usermod
 
 {
@@ -24,7 +24,7 @@ private:
   SubaruTelemetry *ST = SubaruTelemetry::getInstance();
   ColorPrint *p = ColorPrint::getInstance();
   QueueManager queueManager;
-  std::map<PinState*, bool> pendingRelayState;
+  std::map<PinState *, bool> pendingRelayState;
   // Usermod variable declarations for storing segment indices
   std::chrono::steady_clock::time_point powerOffTimer;
   bool timerStarted;
@@ -54,7 +54,7 @@ private:
   {
     JsonObject top = root[FPSTR(_name)];
     bool configComplete = !top.isNull();
-    //Serial.println("Before config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
+    // Serial.println("Before config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
     configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled);
     configComplete &= getJsonValue(top[FPSTR(UM_REAR_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.rearLength);
     configComplete &= getJsonValue(top[FPSTR(UM_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.leftLength);
@@ -66,7 +66,7 @@ private:
     configComplete &= getJsonValue(top[FPSTR(UM_FRONT_LEFT_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.frontLeftLength);
     configComplete &= getJsonValue(top[FPSTR(UM_SCOOP_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.scoopLength);
     configComplete &= getJsonValue(top[FPSTR(UM_GRILLE_SEGMENT_LENGTH)], SUBARU_SEGMENT_CONFIG.grilleLength);
-    //Serial.println("After config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
+    // Serial.println("After config read: rearLength=" + String(SUBARU_SEGMENT_CONFIG.rearLength));
 
     if (configComplete)
     {
@@ -135,7 +135,7 @@ public:
   {
     p->enable();
     ST->initializePins();
-    //Serial.println("All outputs written to PCF8575");
+    // Serial.println("All outputs written to PCF8575");
   }
 
   /**
@@ -150,10 +150,10 @@ public:
   {
     for (int i = 0; i < 39; i++)
     {
-      //Serial.print("Pin ");
-      //Serial.print(i);
-      //Serial.print(" is ");
-      //Serial.println(digitalRead(i));
+      // Serial.print("Pin ");
+      // Serial.print(i);
+      // Serial.print(" is ");
+      // Serial.println(digitalRead(i));
     }
   }
   void printDetailsPeriodically()
@@ -186,7 +186,6 @@ public:
 
       return;
     }
-    delay(3000);
 
     ST->readTelemetry();
 
@@ -199,24 +198,26 @@ public:
      */
     printDetailsPeriodically();
 
-
-  if(ST->driverRockerHigh.isInputActive() || ST->doorOpen.isInputActive()){
-    ST->turnOnProjectionRelay();
-  }else{
-    ST->turnOffProjectionRelay();
-  }
+    if (ST->driverRockerHigh.isInputActive() || ST->doorOpen.isInputActive())
+    {
+      ST->turnOnProjectionRelay();
+    }
+    else
+    {
+      ST->turnOffProjectionRelay();
+    }
     for (int segmentID : ALL_SUBARU_SEGMENT_IDS)
     {
 
-
-      //Set a RelayState for this segment. Default "false"
+      // Set a RelayState for this segment. Default "false"
       SubaruSegment seg = SegCon::seg(segmentID);
       pendingRelayState[seg.relay] = pendingRelayState[seg.relay] || false;
-      
+
       p->println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
       p->print("Iterating on segment ", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
       p->println(" " + String(segmentID) + " ", ColorPrint::BG_WHITE, ColorPrint::BG_GREEN);
-      if(seg.on){
+      if (seg.on)
+      {
         p->println("Turning on relay for segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
         pendingRelayState[seg.relay] = true;
       }
@@ -232,7 +233,7 @@ public:
         String _modeForSegment = strip.getModeData(seg.mode);
         // p->println("\tMode for segment " + String(segmentID) + " is " + _modeForSegment, ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
         bool triggering = effect->triggering();
- 
+
         if (triggering)
         {
           p->println("\tQueueing " + effect->name + " on segment " + String(segmentID), ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
@@ -242,18 +243,19 @@ public:
       }
       queueManager.processQueue(segmentID);
     }
-    
-    //Loop through all pendingRelayStates and update the relay accordingly
+
+    // Loop through all pendingRelayStates and update the relay accordingly
     SegCon::getInstance()->checkRelaySegments();
-    //printState() every 500ms
+    if(ST->allRelaysOff() && ST->driverRockerLow.isInputActive()){
+       //delay(5000);
+    }
+    // printState() every 500ms
 
     p->println("-------------------------------------------------", ColorPrint::FG_GREEN, ColorPrint::BG_BLACK);
 
     p->println("");
     p->println("");
-
   }
 };
 const char Subaru::_name[] = "Subaru";
 const char Subaru::_enabled[] = "enabled";
-

@@ -258,6 +258,9 @@ public:
     void turnOnRelay(PinState *pintState);
     static void relayOffCallback(PinState *relay);  // Static callback method
 
+    bool allRelaysOff(){
+        return !projectionRelay.isOutputActive() && !engineRelay.isOutputActive() && !interiorRelay.isOutputActive() && !groundRelay.isOutputActive();
+    }
     void turnOffAllRelays()
     {
         turnOffGroundLEDRelay();

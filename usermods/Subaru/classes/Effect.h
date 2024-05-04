@@ -552,6 +552,7 @@ std::map<int, Effect *> EFFECTS_NOW;
 class EffectCollection
 {
 public:
+    Effect park;
     Effect doorOpen;
     Effect leftTurn;
     Effect rightTurn;
@@ -570,7 +571,7 @@ public:
     EffectCollection()
     {
         initEffects();
-        effectMap[doorOpen.checksum] = &doorOpen;
+        effectMap[park.checksum] = &park;
         effectMap[leftTurn.checksum] = &leftTurn;
         effectMap[rightTurn.checksum] = &rightTurn;
         effectMap[brake.checksum] = &brake;
@@ -580,6 +581,7 @@ public:
         effectMap[lock.checksum] = &lock;
         effectMap[off.checksum] = &off;
 
+        weakEffectMap[park.weakChecksum] = &park;
         weakEffectMap[doorOpen.weakChecksum] = &doorOpen;
         weakEffectMap[leftTurn.weakChecksum] = &leftTurn;
         weakEffectMap[rightTurn.weakChecksum] = &rightTurn;
@@ -592,53 +594,68 @@ public:
     }
     void initEffects()
     {
+        park = Effect("Car Parked")
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->parked.isInputActive(); })
+                    .setSegmentIDs(SUBARU_GROUND_SEGMENT_IDS)
+                    .setMode(FX_MODE_STATIC)
+                    .setTransitionSpeed(SLOW_TRANSITION)
+                    .setColor(0xFFC68C)
+                    .setSpeed(255)
+                    .setFade(255)
+                    .setRunTime(0)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruFirst)
+                    .setChecksum();
         doorOpen = Effect("Door Open")
-                       .setTriggerCondition([this]() -> bool
-                                            { return ST->doorOpen.isInputActive(); })
-                       .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
-                       .setMode(FX_MODE_STATIC)
-                       .setTransitionSpeed(SLOW_TRANSITION)
-                       .setColor(0xFFC68C)
-                       .setSpeed(255)
-                       .setFade(255)
-                       .setRunTime(30000)
-                       .setPalette(0)
-                       .setPower(true)
-                       .setIntensity(255)
-                       .setPriority(Priority::SubaruSecond)
-                       .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->doorOpen.isInputActive(); })
+                    .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                    .setMode(FX_MODE_STATIC)
+                    .setTransitionSpeed(SLOW_TRANSITION)
+                    .setColor(0xFFC68C)
+                    .setSpeed(255)
+                    .setFade(255)
+                    .setRunTime(30000)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruSecond)
+                    .setChecksum();
 
         leftTurn = Effect("Left Turn")
-                       .setTriggerCondition([this]() -> bool
-                                            { return ST->left.isInputActive(); })
-                       .setSegmentIDs({LEFT_SEGMENT})
-                       .setMode(FX_MODE_LOADING)
-                       .setTransitionSpeed(INSTANT_TRANSITION)
-                       .setColor(0xFFAA00)
-                       .setSpeed(225)
-                       .setFade(255)
-                       .setRunTime(3000)
-                       .setPalette(0)
-                       .setPower(true)
-                       .setIntensity(255)
-                       .setPriority(Priority::SubaruThird)
-                       .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->left.isInputActive(); })
+                    .setSegmentIDs({LEFT_SEGMENT})
+                    .setMode(FX_MODE_LOADING)
+                    .setTransitionSpeed(INSTANT_TRANSITION)
+                    .setColor(0xFFAA00)
+                    .setSpeed(225)
+                    .setFade(255)
+                    .setRunTime(3000)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruThird)
+                    .setChecksum();
 
         rightTurn = Effect("Right Turn")
-                        .setTriggerCondition([this]() -> bool
-                                             { return ST->right.isInputActive(); })
-                        .setSegmentIDs({RIGHT_SEGMENT})
-                        .setMode(FX_MODE_LOADING)
-                        .setTransitionSpeed(INSTANT_TRANSITION)
-                        .setColor(0xFFAA00)
-                        .setSpeed(225)
-                        .setFade(255)
-                        .setRunTime(3000)
-                        .setPalette(0)
-                        .setPower(true)
-                        .setIntensity(255)
-                        .setPriority(Priority::SubaruThird)
-                        .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                            { return ST->right.isInputActive(); })
+                    .setSegmentIDs({RIGHT_SEGMENT})
+                    .setMode(FX_MODE_LOADING)
+                    .setTransitionSpeed(INSTANT_TRANSITION)
+                    .setColor(0xFFAA00)
+                    .setSpeed(225)
+                    .setFade(255)
+                    .setRunTime(3000)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruThird)
+                    .setChecksum();
 
         brake = Effect("Brake Engaged")
                     .setTriggerCondition([this]() -> bool
@@ -657,36 +674,36 @@ public:
                     .setChecksum();
 
         reverse = Effect("Reverse Engaged")
-                      .setTriggerCondition([this]() -> bool
-                                           { return ST->reverse.isInputActive(); })
-                      .setSegmentIDs({REAR_SEGMENT})
-                      .setMode(FX_MODE_STATIC)
-                      .setTransitionSpeed(INSTANT_TRANSITION)
-                      .setColor(0xFFC68C)
-                      .setSpeed(255)
-                      .setFade(255)
-                      .setRunTime(0)
-                      .setPalette(0)
-                      .setPower(true)
-                      .setIntensity(255)
-                      .setPriority(Priority::SubaruSixth)
-                      .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->reverse.isInputActive(); })
+                    .setSegmentIDs({REAR_SEGMENT})
+                    .setMode(FX_MODE_STATIC)
+                    .setTransitionSpeed(INSTANT_TRANSITION)
+                    .setColor(0xFFC68C)
+                    .setSpeed(255)
+                    .setFade(255)
+                    .setRunTime(0)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruSixth)
+                    .setChecksum();
 
         ignition = Effect("Ignition On")
-                       .setTriggerCondition([this]() -> bool
-                                            { return ST->ignition.activated(); })
-                       .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
-                       .setMode(FX_MODE_LOADING)
-                       .setTransitionSpeed(MEDIUM_TRANSITION)
-                       .setColor(0xFFC68C)
-                       .setSpeed(225)
-                       .setFade(255)
-                       .setRunTime(3000)
-                       .setPower(true)
-                       .setPalette(0)
-                       .setIntensity(255)
-                       .setPriority(Priority::SubaruFifth)
-                       .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->ignition.activated(); })
+                    .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                    .setMode(FX_MODE_LOADING)
+                    .setTransitionSpeed(MEDIUM_TRANSITION)
+                    .setColor(0xFFC68C)
+                    .setSpeed(225)
+                    .setFade(255)
+                    .setRunTime(3000)
+                    .setPower(true)
+                    .setPalette(0)
+                    .setIntensity(255)
+                    .setPriority(Priority::SubaruFifth)
+                    .setChecksum();
 
         lock = Effect("Car Locked")
                    .setTriggerCondition([this]() -> bool
@@ -706,37 +723,37 @@ public:
                    .setChecksum();
 
         unlock = Effect("Car Unlocked")
-                     .setTriggerCondition([this]() -> bool
-                                          { return ST->doorUnlock.isInputActive(); })
-                     .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
-                     .setMode(FX_MODE_GRADIENT)
-                     .setReverse(true)
-                     .setTransitionSpeed(MEDIUM_TRANSITION)
-                     .setColor(0x39E75F)
-                     .setSpeed(170)
-                     .setFade(255)
-                     .setRunTime(3000)
-                     .setPalette(0)
-                     .setPower(true)
-                     .setIntensity(128)
-                     .setPriority(Priority::SubaruFourth)
-                     .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return ST->doorUnlock.isInputActive(); })
+                    .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                    .setMode(FX_MODE_GRADIENT)
+                    .setReverse(true)
+                    .setTransitionSpeed(MEDIUM_TRANSITION)
+                    .setColor(0x39E75F)
+                    .setSpeed(170)
+                    .setFade(255)
+                    .setRunTime(3000)
+                    .setPalette(0)
+                    .setPower(true)
+                    .setIntensity(128)
+                    .setPriority(Priority::SubaruFourth)
+                    .setChecksum();
 
         generic = Effect("Morph")
-                      .setTriggerCondition([this]() -> bool
-                                           { return true; })
-                      .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
-                      .setMode(FX_MODE_STATIC)
-                      .setTransitionSpeed(SLOW_TRANSITION)
-                      .setColor(0x000000)
-                      .setSpeed(255)
-                      .setFade(255)
-                      .setRunTime(0)
-                      .setPalette(0)
-                      .setIntensity(255)
-                      .setPower(false)
-                      .setPriority(Priority::SubaruSixth)
-                      .setChecksum();
+                    .setTriggerCondition([this]() -> bool
+                                        { return true; })
+                    .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                    .setMode(FX_MODE_STATIC)
+                    .setTransitionSpeed(SLOW_TRANSITION)
+                    .setColor(0x000000)
+                    .setSpeed(255)
+                    .setFade(255)
+                    .setRunTime(0)
+                    .setPalette(0)
+                    .setIntensity(255)
+                    .setPower(false)
+                    .setPriority(Priority::SubaruSixth)
+                    .setChecksum();
 
         // unlock = Effect("Car Unlocked")
         //     .setTriggerCondition(&SubaruTelemetry::unlockedStatus)
@@ -753,22 +770,23 @@ public:
         //     .setChecksum();
 
         off = Effect("Segment Off")
-                  .setTriggerCondition([this]() -> bool
-                                       { return ST->ignition.isInputInactive(); })
-                  .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
-                  .setMode(FX_MODE_STATIC)
-                  .setTransitionSpeed(SLOW_TRANSITION)
-                  .setColor(0x000000)
-                  .setSpeed(255)
-                  .setFade(255)
-                  .setRunTime(0)
-                  .setPalette(0)
-                  .setIntensity(255)
-                  .setPower(false)
-                  .setPriority(Priority::SubaruSixth)
-                  .setChecksum();
+                .setTriggerCondition([this]() -> bool
+                                    { return ST->ignition.isInputInactive(); })
+                .setSegmentIDs(ALL_SUBARU_SEGMENT_IDS)
+                .setMode(FX_MODE_STATIC)
+                .setTransitionSpeed(SLOW_TRANSITION)
+                .setColor(0x000000)
+                .setSpeed(255)
+                .setFade(255)
+                .setRunTime(0)
+                .setPalette(0)
+                .setIntensity(255)
+                .setPower(false)
+                .setPriority(Priority::SubaruSixth)
+                .setChecksum();
 
         presetChecksums = {
+            park.checksum,
             doorOpen.checksum,
             leftTurn.checksum,
             rightTurn.checksum,
@@ -779,7 +797,7 @@ public:
             lock.checksum,
         };
 
-        allEffects = {&doorOpen, &leftTurn, &rightTurn, &brake, &reverse, &ignition, &unlock, &lock};
+        allEffects = {&park, &doorOpen, &leftTurn, &rightTurn, &brake, &reverse, &ignition, &unlock, &lock};
         printAllChecksums();
     }
     /** Generate a new effect based on effects.generic */

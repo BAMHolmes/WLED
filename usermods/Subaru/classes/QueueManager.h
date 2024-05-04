@@ -198,7 +198,7 @@ public:
         bool segmentQueueHasEffectOnSegment = segmentQueue->back()->sameAs(effectOnSegment);
   
         bool expired = effectToRun->isExpired(segmentID);
-        if (expired)
+        if (expired && !effectToRun->triggering())
         {
             p->println("\tEffect [" + String(effectToRun->name) + "] expired. Stopping...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             segmentQueue->pop_front();
@@ -227,6 +227,8 @@ public:
         }        
         if (effectMismatch)
         {
+            p->println("\tchecksum: " + String(effectToRun->weakChecksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
+            p->println("\tchecksum: " + String(effectOnSegment->weakChecksum), ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             p->println("\tEffect [" + String(effectToRun->name) + "] isn't on the segment (segment has [" + String(effectOnSegment->name) + "]). Triggering...", ColorPrint::FG_WHITE, ColorPrint::BG_MAGENTA);
             effectToRun->triggerEffect(segmentID);
         }

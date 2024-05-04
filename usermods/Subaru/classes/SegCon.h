@@ -201,6 +201,7 @@ class SegCon
 private:
     static SegCon *instance;
     ColorPrint *p = ColorPrint::getInstance();
+    SubaruTelemetry *ST = SubaruTelemetry::getInstance();
 
 public:
     SubaruSegment rearSegment{REAR_SEGMENT};
@@ -219,7 +220,6 @@ public:
         {&SubaruTelemetry::getInstance()->groundRelay, {rearSegment, leftSegment, rightSegment, frontSegment}},
         {&SubaruTelemetry::getInstance()->interiorRelay, {rearLeftSegment, rearRightSegment, frontRightSegment, frontLeftSegment}},
         {&SubaruTelemetry::getInstance()->engineRelay, {scoopSegment, grillSegment}}};
-    SubaruTelemetry *ST = SubaruTelemetry::getInstance();
     void resetAnyEffects();
     SegCon() {}
     void initialize()
@@ -235,9 +235,8 @@ public:
         }
     }
     void checkRelaySegments(){
-        SubaruTelemetry *ST = SubaruTelemetry::getInstance();
         //p->println("RELAY STATUS", ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
-
+    
         for (auto const &relaySegmentPair : relaySegmentMap)
         {
             PinState *relay = relaySegmentPair.first;
@@ -260,6 +259,11 @@ public:
                 //p->println("\t[" + relay->name + "] should be ON", ColorPrint::FG_WHITE, ColorPrint::BG_GREEN);
                 relay->write(true);
             }
+            bool allRelaysOff = ST->allRelaysOff();
+            if(allRelaysOff){
+
+            }
+
         }
     }
     static SegCon *getInstance()
