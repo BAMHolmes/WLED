@@ -183,7 +183,12 @@ public:
       //  //Serial.print(effects.checkSegmentIntegrity());
       //  //Serial.print(", updating:");
       //  //Serial.println(strip.isUpdating());
-
+      //Turn on all relays
+      for (auto &seg : SegCon::allSegments)
+      {
+        pendingRelayState[seg.relay] = true;
+      }
+      SegCon::getInstance()->checkRelaySegments(pendingRelayState);
       return;
     }
 
@@ -245,7 +250,7 @@ public:
     }
 
     // Loop through all pendingRelayStates and update the relay accordingly
-    SegCon::getInstance()->checkRelaySegments();
+    SegCon::getInstance()->checkRelaySegments(pendingRelayState);
     if(ST->allRelaysOff() && ST->driverRockerLow.isInputActive()){
        //delay(5000);
     }

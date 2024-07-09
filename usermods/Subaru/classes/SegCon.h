@@ -215,6 +215,8 @@ public:
     SubaruSegment scoopSegment{SCOOP_SEGMENT};
     SubaruSegment grillSegment{GRILL_SEGMENT};
     SubaruSegment unifiedSegment{UNIFIED_SEGMENT};
+    //Create a collection of all segments "allSegments"
+
     //Create a map of relays to segments
     std::map<PinState*, std::vector<SubaruSegment>> relaySegmentMap = {
         {&SubaruTelemetry::getInstance()->groundRelay, {rearSegment, leftSegment, rightSegment, frontSegment}},
@@ -234,7 +236,7 @@ public:
             Serial.println("Strip does not have enough segments for Subaru, waiting ...");
         }
     }
-    void checkRelaySegments(){
+    void checkRelaySegments(std::map<PinState *, bool> pendingRelayState){
         //p->println("RELAY STATUS", ColorPrint::FG_WHITE, ColorPrint::BG_BLUE);
     
         for (auto const &relaySegmentPair : relaySegmentMap)
@@ -246,7 +248,8 @@ public:
             for (SubaruSegment segment : segments)
             {
                 segment.updateFromStrip();
-                if(segment.on){
+                //Check if segment is on or if the matching PinState from pendingRelayState is true
+                if(segment.on || pendingRelayState[relay]){
                     relayShouldBeOff = false;
                     break;
                 }
@@ -261,19 +264,35 @@ public:
             }
             bool allRelaysOff = ST->allRelaysOff();
             if(allRelaysOff){
-
+                //Take a bigger step if all relays are off...
             }
 
         }
     }
+
     static SegCon *getInstance()
     {
         if (instance == nullptr)
         {
             instance = new SegCon();
             instance->initialize();
+            instance->initializeAllSegments();
         }
         return instance;
+    }
+
+    static std::vector<SubaruSegment> allSegments;
+
+    static void initializeAllSegments()
+    {
+        if (instance != nullptr)
+        {
+            allSegments = {
+                instance->rearSegment, instance->leftSegment, instance->rightSegment,
+                instance->frontSegment, instance->rearLeftSegment, instance->rearRightSegment,
+                instance->frontRightSegment, instance->frontLeftSegment, instance->scoopSegment,
+                instance->grillSegment, instance->unifiedSegment};
+        }
     }
 
     static SubaruSegment seg(uint8_t segmentId){
@@ -465,6 +484,8 @@ public:
     }
 };
 SegCon *SegCon::instance = nullptr; // Initialize the static instance variable
+std::vector<SubaruSegment> SegCon::allSegments;
+
 
 void SubaruTelemetry::turnOnRelay(int segmentID){
     SegCon::seg(segmentID).activateRelay();
